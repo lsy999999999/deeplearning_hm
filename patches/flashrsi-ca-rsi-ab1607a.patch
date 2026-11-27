@@ -1,0 +1,743 @@
+diff --git a/docs/ca-rsi.zh-CN.md b/docs/ca-rsi.zh-CN.md
+new file mode 100644
+index 0000000..c91681c
+--- /dev/null
++++ b/docs/ca-rsi.zh-CN.md
+@@ -0,0 +1,48 @@
++# CA-RSI：候选修改的反事实审计
++
++CA-RSI 沿用 Meta-Harness 的文件编辑 Worker，但从当前已选中的 Snapshot
++提出下一轮候选。它把候选相对当前版本改变的每个文件视为一个修改单元，
++评测原版、完整候选和所有可组成的文件子集，然后选择开发集得分最高的
++合格子集。同分时保留修改文件更少的版本。
++
++## 数据边界
++
++- Worker 只看到训练题的执行轨迹、自己的历史消息和历史 Snapshot 源码。
++  审计题的输入、输出、分数与选择记录不会进入它的历史目录。
++- 开发题按固定顺序交错分给各轮，同一道开发题只用于一轮审计。
++  每轮用同一批题比较当前版本及其全部候选子集。
++- 已用过的审计题会成为保留集。后续轮次先按新题排序，再检查拟选
++  子集是否使保留集退步；不合格则尝试下一个子集。
++- 测试题由 FlashRSI 在演化结束后评测，不参与修改或选择。
++- `train` 必须非空，且训练题与开发题的 task ID 不得重叠。
++
++## 选择与记录
++
++配置 `max_edit_units` 默认为 3，最多可设为 4；超过预算的候选跳过。
++因此一次审计最多需要 16 种版本的新开发题评测，包含原版和完整候选；
++多轮运行还会增加保留集评测。
++只有得分严格高于当前版本、且逐题退步数不超过
++`max_task_regressions` 的子集才可被选中；同一门槛也用于保留集，
++默认允许 0 道退步题。
++审计记录保存在运行目录的 `trajectories/*-audit.json`，其中包含每种
++版本的 Snapshot ID、修改文件、总分、逐题分差、退步数、删除单项修改
++后的条件贡献，以及最终选择。无法独立组合的子集会记录为无效。
++
++`leave_one_out` 是“完整候选分数减去删除这一文件后的分数”。它只是该
++组合和这批题上的条件比较；交互效应、抽样噪声和未测试任务仍可能改变
++结论。一个文件中的多个语义修改目前不能分开归因；研究实验应要求
++Worker 尽量把独立想法放在不同文件，或进一步实现结构化补丁清单。
++
++## 运行
++
++从 `examples/ca_rsi_hotpotqa.yaml` 开始，填入可用的 Target/Worker 模型、
++API 凭据和必要的端点，然后运行：
++
++```bash
++flashrsi run --config examples/ca_rsi_hotpotqa.yaml
++```
++
++示例中的 8/16/16 题只用于检查流程。正式实验应扩大每轮开发题和最终
++测试题，并固定模型版本、温度、数据划分与调用预算。在相同预算下比较
++原版 Meta-Harness、只保留完整候选、逐项贪心选择和 CA-RSI；至少再用
++一个数据集复验，并报告最终成绩、有害修改保留率、逐题退步与调用成本。
+diff --git a/examples/ca_rsi_hotpotqa.yaml b/examples/ca_rsi_hotpotqa.yaml
+new file mode 100644
+index 0000000..8c2e1df
+--- /dev/null
++++ b/examples/ca_rsi_hotpotqa.yaml
+@@ -0,0 +1,34 @@
++run:
++  output_dir: runs/ca_rsi_hotpotqa
++benchmark:
++  name: hotpotqa
++  split: auto
++  mode: context
++  scoring: official
++  seed: 43
++  split_counts:
++    train: 8
++    dev: 16
++    test: 16
++  dataset:
++    source: hotpotqa/hotpot_qa
++    config: distractor
++    revision: 1908d6afbbead072334abe2965f91bd2709910ab
++    splits: [validation]
++agent:
++  name: miniagent
++  llm:
++    model_name: your-target-model
++    api_key: null
++algorithm:
++  name: ca_rsi
++  worker:
++    type: agent
++    name: miniagent
++    llm:
++      model_name: your-worker-model
++      api_key: null
++    max_turns: 30
++  max_steps: 1
++  max_edit_units: 3
++  max_task_regressions: 0
+diff --git a/flashrsi/algorithms/__init__.py b/flashrsi/algorithms/__init__.py
+index dab316e..ac7aebe 100644
+--- a/flashrsi/algorithms/__init__.py
++++ b/flashrsi/algorithms/__init__.py
+@@ -8,6 +8,7 @@ from flashrsi.algorithms.ace import ACE
+ from flashrsi.algorithms.adas import ADAS
+ from flashrsi.algorithms.ahe import AHE
+ from flashrsi.algorithms.arbor import Arbor
++from flashrsi.algorithms.ca_rsi import CARSI
+ from flashrsi.algorithms.darwinx import DarwinX
+ from flashrsi.algorithms.evo_harness import EvoHarness
+ from flashrsi.algorithms.evoprompt import EvoPrompt
+@@ -24,6 +25,7 @@ __all__ = [
+     "ADAS",
+     "AHE",
+     "Arbor",
++    "CARSI",
+     "DarwinX",
+     "EvoHarness",
+     "EvoPrompt",
+diff --git a/flashrsi/algorithms/ca_rsi/__init__.py b/flashrsi/algorithms/ca_rsi/__init__.py
+new file mode 100644
+index 0000000..c2de571
+--- /dev/null
++++ b/flashrsi/algorithms/ca_rsi/__init__.py
+@@ -0,0 +1,249 @@
++"""Counterfactual audit of file-level harness edits before promotion."""
++
++from __future__ import annotations
++
++from contextlib import ExitStack
++from pathlib import Path
++from tempfile import TemporaryDirectory
++
++from flashrsi.algorithms.meta_harness import MetaHarness
++from flashrsi.core import Snapshot
++
++
++class CARSI(MetaHarness):
++    """Propose from the incumbent, then compare all bounded edit subsets.
++
++    A changed Snapshot path is one edit unit. Different changes within one file
++    cannot be attributed separately by this algorithm.
++    """
++
++    name = "ca_rsi"
++    description = "Audit file-level edits with paired counterfactual evaluations."
++    _defaults = {"max_steps": 1, "max_edit_units": 3, "max_task_regressions": 0}
++    _ranges = {
++        "max_steps": (int, 1),
++        "max_edit_units": (int, 1),
++        "max_task_regressions": (int, 0),
++    }
++
++    def _check(self) -> None:
++        super()._check()
++        if not self.benchmark.train:
++            raise ValueError(
++                "CA-RSI requires a non-empty train split for proposer evidence"
++            )
++        if len(self.benchmark.dev) < self.config.max_steps:
++            raise ValueError("CA-RSI requires at least one fresh dev task per step")
++        if self.config.max_edit_units > 4:
++            raise ValueError("CA-RSI max_edit_units cannot exceed 4 (16 variants)")
++        train_ids = {task.task_id for task in self.benchmark.train}
++        dev_ids = {task.task_id for task in self.benchmark.dev}
++        if len(dev_ids) != len(self.benchmark.dev):
++            raise ValueError("CA-RSI dev task IDs must be unique")
++        if train_ids & dev_ids:
++            raise ValueError("CA-RSI train and dev task IDs must be disjoint")
++
++    async def evolve(self) -> Snapshot:
++        run_dir = self._run_dir
++        with ExitStack() as resources:
++            if run_dir is None:
++                self._run_dir = Path(resources.enter_context(TemporaryDirectory()))
++                for name in ("snapshots", "trajectories", "working"):
++                    (self._run_dir / name).mkdir()
++            try:
++                seed = incumbent = self.target.snapshot
++                versions = [seed]
++                await self._evaluate(seed, self.benchmark.train, label="train")
++                dev = self.benchmark.dev
++                retention_tasks = ()
++                for step in range(self.config.max_steps):
++                    tasks = dev[step :: self.config.max_steps]
++                    baseline = await self._evaluate(
++                        incumbent, tasks, label="audit_baseline"
++                    )
++                    candidate = await self._propose(
++                        incumbent,
++                        versions,
++                        step,
++                        history_labels=frozenset({"train", "worker"}),
++                        records_description=(
++                            "training evaluations and Worker traces only. Audit tasks, "
++                            "scores and selection records are withheld from the Worker."
++                        ),
++                    )
++                    if candidate is None:
++                        retention_tasks += tasks
++                        continue
++                    versions.append(candidate)
++                    paths = incumbent.changed_paths(candidate)
++                    if len(paths) > self.config.max_edit_units:
++                        self._record(
++                            "audit",
++                            {
++                                "step": step,
++                                "candidate_id": candidate.id,
++                                "changed_paths": paths,
++                                "status": "skipped_edit_budget",
++                            },
++                        )
++                        retention_tasks += tasks
++                        continue
++
++                    full_mask = (1 << len(paths)) - 1
++                    evaluated = {0: (incumbent, baseline)}
++                    evaluated[full_mask] = (
++                        candidate,
++                        await self._evaluate(candidate, tasks, label="audit_candidate"),
++                    )
++                    invalid = []
++                    for mask in range(1, full_mask):
++                        selected_paths = tuple(
++                            path
++                            for index, path in enumerate(paths)
++                            if mask & (1 << index)
++                        )
++                        try:
++                            subset = self._subset(incumbent, candidate, selected_paths)
++                        except (OSError, ValueError) as error:
++                            invalid.append(
++                                {"paths": selected_paths, "problem": str(error)}
++                            )
++                            continue
++                        evaluated[mask] = (
++                            subset,
++                            await self._evaluate(subset, tasks, label="audit_subset"),
++                        )
++
++                    rows = []
++                    eligible = []
++                    for mask, (snapshot, result) in sorted(evaluated.items()):
++                        regressions = sum(
++                            result.per_task[task_id] < score
++                            for task_id, score in baseline.per_task.items()
++                        )
++                        row = {
++                            "paths": tuple(
++                                path
++                                for index, path in enumerate(paths)
++                                if mask & (1 << index)
++                            ),
++                            "snapshot_id": snapshot.id,
++                            "score": result.score,
++                            "per_task_delta": {
++                                task_id: result.per_task[task_id] - score
++                                for task_id, score in baseline.per_task.items()
++                            },
++                            "regressions": regressions,
++                        }
++                        rows.append(row)
++                        if (
++                            mask
++                            and result.score > baseline.score
++                            and regressions <= self.config.max_task_regressions
++                        ):
++                            eligible.append(mask)
++
++                    ranked = sorted(
++                        eligible,
++                        key=lambda mask: (
++                            evaluated[mask][1].score,
++                            -mask.bit_count(),
++                            -mask,
++                        ),
++                        reverse=True,
++                    )
++                    selected_mask = 0
++                    retention_checks = []
++                    if ranked and retention_tasks:
++                        retention_baseline = await self._evaluate(
++                            incumbent, retention_tasks, label="retention_baseline"
++                        )
++                    for mask in ranked:
++                        if retention_tasks:
++                            retention = await self._evaluate(
++                                evaluated[mask][0],
++                                retention_tasks,
++                                label="retention_candidate",
++                            )
++                            regressions = sum(
++                                retention.per_task[task_id] < score
++                                for task_id, score in (
++                                    retention_baseline.per_task.items()
++                                )
++                            )
++                            retention_checks.append(
++                                {
++                                    "snapshot_id": evaluated[mask][0].id,
++                                    "regressions": regressions,
++                                }
++                            )
++                            if regressions > self.config.max_task_regressions:
++                                continue
++                        selected_mask = mask
++                        break
++                    selected = evaluated[selected_mask][0]
++                    full_score = evaluated[full_mask][1].score
++                    self._record(
++                        "audit",
++                        {
++                            "step": step,
++                            "baseline_id": incumbent.id,
++                            "candidate_id": candidate.id,
++                            "changed_paths": paths,
++                            "task_ids": [task.task_id for task in tasks],
++                            "variants": rows,
++                            "invalid_variants": invalid,
++                            "retention_task_ids": [
++                                task.task_id for task in retention_tasks
++                            ],
++                            "retention_checks": retention_checks,
++                            "leave_one_out": {
++                                path: (
++                                    full_score
++                                    - evaluated[full_mask ^ (1 << index)][1].score
++                                    if full_mask ^ (1 << index) in evaluated
++                                    else None
++                                )
++                                for index, path in enumerate(paths)
++                            },
++                            "selected_id": selected.id,
++                            "selected_paths": tuple(
++                                path
++                                for index, path in enumerate(paths)
++                                if selected_mask & (1 << index)
++                            ),
++                        },
++                    )
++                    if selected_mask:
++                        incumbent = selected
++                        if selected.id != candidate.id:
++                            versions.append(selected)
++                        if step + 1 < self.config.max_steps:
++                            await self._evaluate(
++                                incumbent, self.benchmark.train, label="train"
++                            )
++                    retention_tasks += tasks
++
++                return self._promote(
++                    seed, incumbent, audit_rounds=self.config.max_steps
++                )
++            finally:
++                self._run_dir = run_dir
++
++    def _subset(
++        self, baseline: Snapshot, candidate: Snapshot, paths: tuple[str, ...]
++    ) -> Snapshot:
++        with baseline.check_out(working_dir=self._run_dir / "working") as directory:
++            for path in paths:
++                destination = directory / path
++                entry = candidate.files.get(path)
++                if entry is None:
++                    destination.unlink()
++                else:
++                    destination.parent.mkdir(parents=True, exist_ok=True)
++                    destination.write_bytes(entry.content)
++                    destination.chmod(0o755 if entry.executable else 0o644)
++            return self._commit(baseline, directory)
++
++
++__all__ = ["CARSI"]
+diff --git a/flashrsi/algorithms/meta_harness/__init__.py b/flashrsi/algorithms/meta_harness/__init__.py
+index 0660578..f700254 100644
+--- a/flashrsi/algorithms/meta_harness/__init__.py
++++ b/flashrsi/algorithms/meta_harness/__init__.py
+@@ -81,7 +81,15 @@ class MetaHarness(Algorithm):
+             finally:
+                 self._run_dir = run_dir
+ 
+-    async def _propose(self, seed, versions, step) -> Snapshot | None:
++    async def _propose(
++        self,
++        seed,
++        versions,
++        step,
++        *,
++        history_labels: frozenset[str] | None = None,
++        records_description: str | None = None,
++    ) -> Snapshot | None:
+         """Expose historical native checkouts and records beside the editable seed.
+ 
+         Nested references travel with working_dir to a container Worker. They
+@@ -108,15 +116,29 @@ class MetaHarness(Algorithm):
+                 (history / "index.json").write_text(
+                     json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
+                 )
+-                shutil.copytree(
+-                    self._run_dir / "trajectories", history / "trajectories"
+-                )
++                records = self._run_dir / "trajectories"
++                if history_labels is None:
++                    shutil.copytree(records, history / "trajectories")
++                else:
++                    visible = history / "trajectories"
++                    visible.mkdir()
++                    for record in records.glob("*.json"):
++                        label = record.stem.split("-", 1)[-1]
++                        if label in history_labels:
++                            shutil.copy2(record, visible / record.name)
+                 await self.worker.edit(
+                     directory,
+                     prompts.PROPOSE.format(
+                         step=step,
+                         history=history.relative_to(directory).as_posix(),
+                         rules=json.dumps(dict(self.target.component_rules)),
++                        records_description=records_description
++                        or (
++                            "full prior evaluations and proposer traces. Evaluation "
++                            "records link task inputs, outputs, messages, metrics and "
++                            "errors to Snapshot IDs. Score/decision records report "
++                            "aggregate scores and attempted edits."
++                        ),
+                     ),
+                 )
+             discard_runtime_files(directory)
+diff --git a/flashrsi/algorithms/meta_harness/_prompts.py b/flashrsi/algorithms/meta_harness/_prompts.py
+index b638b33..8e5c334 100644
+--- a/flashrsi/algorithms/meta_harness/_prompts.py
++++ b/flashrsi/algorithms/meta_harness/_prompts.py
+@@ -10,9 +10,7 @@ combine, or rewrite its mechanisms to construct one new candidate.
+ SEARCH HISTORY (relative to the current working directory):
+ - `{history}/index.json` maps native Snapshot IDs to historical source directories.
+   Source paths in this index are relative to `{history}`.
+-- `{history}/trajectories/` contains full prior evaluations and proposer traces.
+-  Evaluation records link task inputs, outputs, messages, metrics and errors to
+-  Snapshot IDs. Score/decision records report aggregate scores and attempted edits.
++- `{history}/trajectories/` contains {records_description}
+ 
+ Use your file and terminal tools to selectively inspect the history. Read actual
+ source and successful/failed trajectories as needed, including low-scoring and
+diff --git a/flashrsi/runner.py b/flashrsi/runner.py
+index d8404de..86df379 100644
+--- a/flashrsi/runner.py
++++ b/flashrsi/runner.py
+@@ -30,6 +30,7 @@ from flashrsi.algorithms import (
+     OPRO,
+     RRSI,
+     Arbor,
++    CARSI,
+     DarwinX,
+     EvoHarness,
+     EvoPrompt,
+@@ -127,6 +128,7 @@ _ALGORITHMS = {
+     "darwinx": DarwinX,
+     "evo_harness": EvoHarness,
+     "meta_harness": MetaHarness,
++    "ca_rsi": CARSI,
+     "modular_rsi": ModularRSI,
+     "rrsi": RRSI,
+     "ace": ACE,
+diff --git a/tests/test_ca_rsi.py b/tests/test_ca_rsi.py
+new file mode 100644
+index 0000000..99285d0
+--- /dev/null
++++ b/tests/test_ca_rsi.py
+@@ -0,0 +1,198 @@
++"""Offline counterfactual audit tests."""
++
++import asyncio
++import json
++import tempfile
++import unittest
++from dataclasses import replace
++from pathlib import Path
++
++from flashrsi.algorithms.ca_rsi import CARSI
++from flashrsi.core import Agent, Benchmark, Task, Trajectory
++
++
++class ToyTasks(Benchmark):
++    name = "ca-rsi-toy"
++    description = "Offline tasks with a harmful edit hidden by a useful edit."
++    primary_metric = "accuracy"
++    metadata = {}
++
++    def load(self):
++        if self._splits is None:
++            self._splits = {
++                "train": (Task("train-0", "train-0"),),
++                "dev": tuple(Task(f"dev-{i}", f"dev-{i}") for i in range(4)),
++                "test": (Task("test-0", "test-0"),),
++            }
++        return self._splits
++
++    def grade(self, results):
++        return tuple(
++            replace(item, metrics={"accuracy": float(item.output)})
++            for item in results
++        )
++
++
++class ToyTarget(Agent):
++    name = "ca-rsi-target"
++    description = "Reads two versioned prompt files."
++
++    async def _run(self, prompt, working_dir=None):
++        useful = (self.files_dir / "skills/a.md").read_text() == "GOOD"
++        harmful = (self.files_dir / "skills/b.md").read_text() == "BAD"
++        passed = useful and (not harmful or prompt != "dev-3")
++        return Trajectory(output=str(float(passed)))
++
++
++class InteractionTarget(ToyTarget):
++    name = "ca-rsi-interaction-target"
++
++    async def _run(self, prompt, working_dir=None):
++        useful = (self.files_dir / "skills/a.md").read_text() == "GOOD"
++        partner = (self.files_dir / "skills/b.md").read_text() == "BAD"
++        return Trajectory(output=str(float(useful and partner)))
++
++
++class RetentionTarget(ToyTarget):
++    name = "ca-rsi-retention-target"
++
++    async def _run(self, prompt, working_dir=None):
++        useful = (self.files_dir / "skills/a.md").read_text() == "GOOD"
++        harmful = (self.files_dir / "skills/b.md").read_text() == "BAD"
++        passed = useful and (
++            prompt in {"dev-1", "dev-3"} if harmful else prompt == "dev-0"
++        )
++        return Trajectory(output=str(float(passed)))
++
++
++class ToyWorker(Agent):
++    name = "ca-rsi-worker"
++    description = "Creates a useful and a harmful edit."
++
++    def __init__(self):
++        super().__init__({"type": "agent", "llm": {"model_name": "offline"}})
++        self.seen_records = []
++        self.prompts = []
++        self.turn = 0
++
++    async def _run(self, prompt, working_dir=None):
++        self.prompts.append(prompt)
++        history = next(working_dir.glob("history-*"))
++        self.seen_records.append(
++            sorted(path.name for path in (history / "trajectories").glob("*.json"))
++        )
++        if self.turn == 0:
++            (working_dir / "skills/a.md").write_text("GOOD")
++        (working_dir / "skills/b.md").write_text("BAD")
++        self.turn += 1
++        return Trajectory(output="edited")
++
++
++class CARSIStudy(unittest.TestCase):
++    def setUp(self):
++        self.temporary = tempfile.TemporaryDirectory()
++        self.addCleanup(self.temporary.cleanup)
++        self.root = Path(self.temporary.name)
++        source = self.root / "source"
++        (source / "skills").mkdir(parents=True)
++        (source / "components.yaml").write_text("skill: ['skills/**']\n")
++        (source / "skills/a.md").write_text("SEED")
++        (source / "skills/b.md").write_text("SEED")
++        self.target = ToyTarget(
++            {"source_dir": str(source), "llm": {"model_name": "offline"}}
++        )
++        self.worker = ToyWorker()
++
++    def make_algorithm(self, **options):
++        algorithm = CARSI(
++            {"max_steps": 1, **options},
++            target=self.target,
++            worker=self.worker,
++            benchmark=ToyTasks(),
++        )
++        algorithm._run_dir = self.root / "run"
++        for name in ("snapshots", "trajectories", "working"):
++            (algorithm._run_dir / name).mkdir(parents=True)
++        return algorithm
++
++    def records(self, label):
++        return [
++            json.loads(path.read_text())
++            for path in sorted((self.root / "run/trajectories").glob(f"*-{label}.json"))
++        ]
++
++    def test_harmful_file_is_removed_and_marginal_effect_is_recorded(self):
++        algorithm = self.make_algorithm()
++        final = asyncio.run(algorithm.evolve())
++
++        self.assertEqual(final.files["skills/a.md"].content, b"GOOD")
++        self.assertEqual(final.files["skills/b.md"].content, b"SEED")
++        audit = self.records("audit")[0]
++        self.assertEqual(len(audit["variants"]), 4)
++        self.assertEqual(audit["selected_paths"], ["skills/a.md"])
++        self.assertEqual(audit["leave_one_out"]["skills/b.md"], -0.25)
++        self.assertEqual(self.records("decision")[-1]["candidate_id"], final.id)
++        self.assertTrue(
++            all("audit" not in name for name in self.worker.seen_records[0])
++        )
++        self.assertIn("training evaluations", self.worker.prompts[0])
++        self.assertNotIn("Score/decision records", self.worker.prompts[0])
++
++    def test_fresh_dev_tasks_and_audit_records_remain_hidden(self):
++        algorithm = self.make_algorithm(max_steps=2)
++        final = asyncio.run(algorithm.evolve())
++
++        self.assertEqual(final.files["skills/a.md"].content, b"GOOD")
++        self.assertEqual(final.files["skills/b.md"].content, b"SEED")
++        audits = self.records("audit")
++        self.assertEqual(
++            [row["task_ids"] for row in audits],
++            [["dev-0", "dev-2"], ["dev-1", "dev-3"]],
++        )
++        self.assertTrue(all(
++            "audit" not in name
++            for records in self.worker.seen_records
++            for name in records
++        ))
++
++    def test_interacting_edits_are_kept_together(self):
++        self.target = InteractionTarget(dict(self.target.config))
++        algorithm = self.make_algorithm()
++        final = asyncio.run(algorithm.evolve())
++
++        self.assertEqual(final.files["skills/a.md"].content, b"GOOD")
++        self.assertEqual(final.files["skills/b.md"].content, b"BAD")
++        audit = self.records("audit")[0]
++        self.assertEqual(audit["selected_paths"], ["skills/a.md", "skills/b.md"])
++        self.assertEqual(audit["leave_one_out"]["skills/a.md"], 1.0)
++        self.assertEqual(audit["leave_one_out"]["skills/b.md"], 1.0)
++
++    def test_later_gain_cannot_erase_an_earlier_correct_answer(self):
++        self.target = RetentionTarget(dict(self.target.config))
++        algorithm = self.make_algorithm(max_steps=2)
++        final = asyncio.run(algorithm.evolve())
++
++        self.assertEqual(final.files["skills/a.md"].content, b"GOOD")
++        self.assertEqual(final.files["skills/b.md"].content, b"SEED")
++        second = self.records("audit")[1]
++        self.assertEqual(second["selected_paths"], [])
++        self.assertEqual(second["retention_task_ids"], ["dev-0", "dev-2"])
++        self.assertEqual(second["retention_checks"][0]["regressions"], 1)
++
++    def test_missing_train_split_is_rejected(self):
++        class NoTrain(ToyTasks):
++            def load(self):
++                splits = super().load()
++                splits["train"] = ()
++                return splits
++
++        with self.assertRaisesRegex(ValueError, "train split"):
++            CARSI({}, target=self.target, worker=self.worker, benchmark=NoTrain())
++
++    def test_variant_budget_is_bounded(self):
++        with self.assertRaisesRegex(ValueError, "max_edit_units"):
++            self.make_algorithm(max_edit_units=5)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_meta_harness.py b/tests/test_meta_harness.py
+index 3fe8df6..3cc8c33 100644
+--- a/tests/test_meta_harness.py
++++ b/tests/test_meta_harness.py
+@@ -67,7 +67,7 @@ def history(prompt, directory):
+     return index_path.parent, json.loads(index_path.read_text())
+ 
+ 
+-def setup(monkeypatch, tmp_path, edit, *, cls=MiniAgent, relocate=False, **options):
++def make_setup(monkeypatch, tmp_path, edit, *, cls=MiniAgent, relocate=False, **options):
+     source = tmp_path / "source"
+     (source / "skills").mkdir(parents=True)
+     (source / "tools").mkdir()
+@@ -171,7 +171,7 @@ def test_full_history_includes_regressions_and_survives_workspace_relocation(
+             ["GOOD", "WORSE", "GREAT"][len(seen) - 1], newline="\n"
+         )
+ 
+-    algo, calls = setup(
++    algo, calls = make_setup(
+         monkeypatch, tmp_path, edit, cls=cls, relocate=relocate, max_steps=3
+     )
+     run_dir = attach_run(algo, tmp_path)
+@@ -202,7 +202,7 @@ def test_ties_keep_the_earlier_best_after_later_regressions(monkeypatch, tmp_pat
+     def edit(prompt, directory):
+         (directory / "skills/main.md").write_text(next(markers), newline="\n")
+ 
+-    algo, _ = setup(monkeypatch, tmp_path, edit, max_steps=3)
++    algo, _ = make_setup(monkeypatch, tmp_path, edit, max_steps=3)
+     run_dir = attach_run(algo, tmp_path)
+     final = asyncio.run(algo.evolve())
+     records = [
+@@ -245,7 +245,7 @@ def test_invalid_edits_consume_one_attempt_and_next_round_reads_the_rejection(
+             assert any(row.get("kind") == "decline" for row in records)
+             (directory / "skills/main.md").write_text("GOOD", newline="\n")
+ 
+-    algo, calls = setup(monkeypatch, tmp_path, edit, max_steps=2)
++    algo, calls = make_setup(monkeypatch, tmp_path, edit, max_steps=2)
+     directory = attach_run(algo, tmp_path)
+     final = asyncio.run(algo.evolve())
+     assert final.files["skills/main.md"].content == b"GOOD"
+@@ -269,7 +269,7 @@ def test_history_changes_are_discarded_and_rebuilt_from_native_records(
+         (directory / "skills/__pycache__").mkdir()
+         (directory / "skills/__pycache__/generated.pyc").write_bytes(b"cache")
+ 
+-    algo, _ = setup(monkeypatch, tmp_path, edit, max_steps=2)
++    algo, _ = make_setup(monkeypatch, tmp_path, edit, max_steps=2)
+     final = asyncio.run(algo.evolve())
+     assert count == 2 and final.files["skills/main.md"].content == b"GOOD"
+     assert not any("__pycache__" in path for path in final.files)
+@@ -284,7 +284,7 @@ def test_worker_failure_aborts_and_cleans_all_checkouts(
+         assert len(index) == 1 and folder.is_dir()
+         return Trajectory(status="error", error_message="provider failed")
+ 
+-    algo, _ = setup(monkeypatch, tmp_path, fail)
++    algo, _ = make_setup(monkeypatch, tmp_path, fail)
+     run_dir = attach_run(algo, tmp_path) if persistent else None
+     seed = algo.target.snapshot
+     with pytest.raises(RuntimeError, match="provider failed"):
+@@ -307,7 +307,7 @@ def test_direct_python_use_provides_full_history_and_restores_recording_state(
+         )
+         (directory / "skills/main.md").write_text("GOOD", newline="\n")
+ 
+-    algo, _ = setup(monkeypatch, tmp_path, edit)
++    algo, _ = make_setup(monkeypatch, tmp_path, edit)
+     final = asyncio.run(algo.evolve())
+     assert final.files["skills/main.md"].content == b"GOOD"
+     assert algo._run_dir is None
+@@ -317,11 +317,11 @@ def test_direct_python_use_provides_full_history_and_restores_recording_state(
+ @pytest.mark.parametrize("value", [0, -1, True, 1.5, "2"])
+ def test_invalid_budget_is_rejected_before_execution(monkeypatch, tmp_path, value):
+     with pytest.raises(ValueError, match="max_steps"):
+-        setup(monkeypatch, tmp_path, lambda *args: None, max_steps=value)
++        make_setup(monkeypatch, tmp_path, lambda *args: None, max_steps=value)
+ 
+ 
+ def test_text_only_worker_and_empty_search_split_are_rejected(monkeypatch, tmp_path):
+-    algo, calls = setup(monkeypatch, tmp_path, lambda *args: None)
++    algo, calls = make_setup(monkeypatch, tmp_path, lambda *args: None)
+     with pytest.raises(ValueError, match="worker.type: agent"):
+         MetaHarness({}, target=algo.target, worker=LLM(), benchmark=SearchTasks())
+     benchmark = SearchTasks()
