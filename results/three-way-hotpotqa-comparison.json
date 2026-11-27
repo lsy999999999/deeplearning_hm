@@ -1,0 +1,60 @@
+{
+  "date": "2026-11-27",
+  "scope": "three_way_comparison_reusing_historical_initial_snapshot_test_no_new_model_calls",
+  "checks": {
+    "same_initial_snapshot": true,
+    "same_test_task_contents": true,
+    "same_target_inference_configuration": true,
+    "test_tasks": 16,
+    "single_seed_single_test_sample_per_method": true,
+    "new_evaluation_performed": false
+  },
+  "comparisons": [
+    {
+      "method": "miniagent_no_rsi",
+      "evolution_rounds": 0,
+      "result_source": "results/deepseek-unlimited-study.json",
+      "source_test_record": "runs/hotpotqa_pilot/ca_rsi-miniagent-hotpotqa-20261127-182117-253432/trajectories/00009-test.json",
+      "source_run_algorithm": "ca_rsi",
+      "run_dir": "runs/hotpotqa_pilot/ca_rsi-miniagent-hotpotqa-20261127-182117-253432",
+      "snapshot_id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+      "test": {
+        "tasks": 16,
+        "exact_match": 0.5,
+        "f1": 0.6815476190476191
+      },
+      "historical_result_reused": true,
+      "note": "The prior CA-RSI run retained the unchanged initial Snapshot. Reuse its recorded final test; this is not a newly executed standalone no-RSI run."
+    },
+    {
+      "method": "meta_harness",
+      "evolution_rounds": 4,
+      "result_source": "results/four-round-hotpotqa.json",
+      "run_dir": "runs/study/meta_harness/seed-43/meta_harness-miniagent-hotpotqa-20261127-193656-488919",
+      "snapshot_id": "210fe08882bc84a096d74973cdf1de57abab7ced5770a70b8693f2d02efc857c",
+      "test": {
+        "tasks": 16,
+        "exact_match": 0.5,
+        "f1": 0.701388888888889
+      },
+      "historical_result_reused": false
+    },
+    {
+      "method": "ca_rsi",
+      "evolution_rounds": 4,
+      "result_source": "results/four-round-hotpotqa.json",
+      "run_dir": "runs/study/ca_rsi/seed-43/ca_rsi-miniagent-hotpotqa-20261127-193749-026674",
+      "snapshot_id": "fb561e435180009495df35bdf7ac1d5194859b80c37fb41e53565275f673fd12",
+      "test": {
+        "tasks": 16,
+        "exact_match": 0.5,
+        "f1": 0.6648809523809524
+      },
+      "historical_result_reused": false
+    }
+  ],
+  "f1_gain_over_initial_percentage_points": {
+    "meta_harness": 1.9841269841269882,
+    "ca_rsi": -1.6666666666666718
+  }
+}

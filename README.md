@@ -2,7 +2,7 @@
 
 本文件记录 base 的配置、CA-RSI 相对 base 的实验变量、实际结果和运行成本，后续实验继续追加。
 当前结果更新至 **2026-11-27**，包含 HotpotQA 的单种子单轮和四轮小规模实验。
-第 1–3.4 节记录历史单轮设置与结果，新增四轮对照及进化图见第 3.5 节。
+第 1–3.4 节记录历史单轮设置与结果，三组统一对照及四轮进化图见第 3.5 节。
 原 README 已移至 [项目说明与阶段性分析](docs/archive/project-overview-2026-11-27.md)，
 环境安装和工具使用见 [本地复现说明](docs/local_run.zh-CN.md)。
 
@@ -142,7 +142,7 @@ CA-RSI 的 16 条缺失用量来自失败轨迹，表中 token 是已记录用�
 | CA-RSI | `ca_rsi-miniagent-hotpotqa-20261127-182117-253432` |
 | 完整候选补充测试 | `evaluation-miniagent-hotpotqa-20261127-183044-698897` |
 
-### 3.5 四轮小规模对照（2026-11-27）
+### 3.5 三组对照：初始 MiniAgent 与四轮演化（2026-11-27）
 
 本次新开两个独立进程，分别运行原版 Meta-Harness 和 CA-RSI，各配置 4 轮。
 模型、采样、输出长度、Target/Worker 限制、数据版本和评分方式沿用第 1 节；
@@ -152,12 +152,21 @@ train/dev/test 仍为 **8/16/16**，seed **43**。两次运行的初始 Snapshot
 结构化结果、逐轮选择和完整成本统计见
 [`four-round-hotpotqa.json`](results/four-round-hotpotqa.json)。
 
+为判断演化是否优于未修改的 agent，下表同时加入**初始 MiniAgent、不做 RSI** 的已有测试结果。
+该结果复用自第 3.1 节 CA-RSI 保留初始 Snapshot 后的最终测试，EM 为 8/16、F1 为 68.15%。
+已进一步核对三组的初始 Snapshot、16 道测试题内容和完整 Target 配置均一致。
+本次只整理已有记录，没有重新调用模型；结果来源和一致性检查见
+[`three-way-hotpotqa-comparison.json`](results/three-way-hotpotqa-comparison.json)。
+
 | 方法 | 配置轮数 / 有效候选评测轮数 | 最终版本 | 测试集 EM | 测试集 F1 |
 | --- | --- | --- | ---: | ---: |
+| 初始 MiniAgent，不做 RSI（历史测试复用） | 0 / 0 | 初始 Snapshot `5634bcac75` | 8/16（50.00%） | 68.15% |
 | Base：Meta-Harness | 4 / 3 | 第一轮完整候选 `210fe08882` | 8/16（50.00%） | 70.14% |
 | CA-RSI | 4 / 3 | 第三轮保留版本 `fb561e4351` | 8/16（50.00%） | 66.49% |
 
-按本次最终答题结果，base 略好：主要指标 EM 相同，F1 高约 **3.65 个百分点**。
+三组主要指标 EM 均为 **50.00%**，本次没有观察到演化带来的 EM 提升。
+相对初始 MiniAgent，Meta-Harness 的 F1 高约 **1.98 个百分点**，
+CA-RSI 的 F1 低约 **1.67 个百分点**；Meta-Harness 比 CA-RSI 高约 **3.65 个百分点**。
 目前只有一个种子、16 道测试题，尚不能判断稳定优劣。
 两组候选来源不同、生成时可见的数据不同，实际 token 预算也不同，
 不能把差异单独归因于 CA-RSI 的组合审计机制。
@@ -206,6 +215,7 @@ train/dev/test 仍为 **8/16/16**，seed **43**。两次运行的初始 Snapshot
 本次尚未通过重复评测或控制模型随机性来解决这一问题。
 
 **运行成本。** 以下只统计这两次新的四轮运行，包含最终测试和未被采纳候选的 Worker 用量。
+初始 MiniAgent 对照复用已有测试，没有新增调用成本；原历史 CA-RSI 的整场演化成本不归入无 RSI 对照。
 
 | 运行 | 输入 tokens（含缓存） | 输出 tokens | 缓存读取 tokens | 用量条目 | token 用量缺失 | 启动器耗时 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -218,6 +228,7 @@ CA-RSI 的已记录输入加输出 token 总量更少，但用量条目更多；
 
 本地运行标识：
 
+- 初始 MiniAgent 的历史测试来源：`ca_rsi-miniagent-hotpotqa-20261127-182117-253432`，最终测试 Snapshot 为 `5634bcac75`
 - Base：`meta_harness-miniagent-hotpotqa-20261127-193656-488919`
 - CA-RSI：`ca_rsi-miniagent-hotpotqa-20261127-193749-026674`
 
