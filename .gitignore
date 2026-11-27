@@ -6,7 +6,6 @@
 __pycache__/
 .pytest_cache/
 .ruff_cache/
-FlashRSI/
 runs/
 results/private/
 
@@ -15,3 +14,7 @@ data/
 dataset/
 datasets/
 .cache/
+
+# Keep the tiny upstream quickstart fixture with the source code.
+!FlashRSI/examples/data/
+!FlashRSI/examples/data/quickstart.jsonl

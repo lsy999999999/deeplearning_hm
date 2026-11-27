@@ -1,0 +1,49 @@
+run:
+  output_dir: runs/ca_rsi_hotpotqa
+benchmark:
+  name: hotpotqa
+  split: auto
+  mode: context
+  scoring: official
+  seed: 43
+  split_counts:
+    train: 8
+    dev: 16
+    test: 16
+  dataset:
+    source: hotpotqa/hotpot_qa
+    config: distractor
+    revision: 1908d6afbbead072334abe2965f91bd2709910ab
+    splits:
+    - validation
+agent:
+  name: miniagent
+  llm:
+    model_name: DeepSeek-V4-Flash
+    api_key: null
+    base_url: https://token.matpool.com/v1
+    unlimited_output: true
+    reasoning_effort: none
+    extra_body:
+      thinking:
+        type: disabled
+      temperature: 1
+algorithm:
+  name: ca_rsi
+  worker:
+    type: agent
+    name: miniagent
+    llm:
+      model_name: DeepSeek-V4-Flash
+      api_key: null
+      base_url: https://token.matpool.com/v1
+      unlimited_output: true
+      reasoning_effort: none
+      extra_body:
+        thinking:
+          type: disabled
+        temperature: 1
+    max_turns: 30
+  max_steps: 1
+  max_edit_units: 3
+  max_task_regressions: 0

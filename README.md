@@ -15,7 +15,8 @@
 
 ## 代码和复现
 
-运行下面的初始化命令即可还原完整源码，生成本地 `FlashRSI/` 目录。
+完整源码已直接合入本仓库的 `FlashRSI/` 目录，包含本地 CA-RSI 和模型接入修改。
+运行下面的初始化命令即可安装依赖，无需再克隆上游或应用补丁。
 新增的矩池云启动器支持从 `.env` 读取现有 `apikey` 字段：
 
 当前 Target/Worker 均使用 `DeepSeek-V4-Flash`；思考设置为 `none`，
@@ -29,21 +30,17 @@ sh scripts/setup.sh
 
 配置、同候选重放对照、冻结测试版本和成本汇总的说明见
 [`docs/local_run.zh-CN.md`](docs/local_run.zh-CN.md)。
-`FlashRSI/` 是可由固定版本和补丁重建的本地源码目录，不重复提交嵌套仓库。
+`FlashRSI/` 作为普通源码目录提交，不是子模块；下载的数据集、缓存、运行轨迹和密钥保留在本地。
+上游自带的 12 行 quickstart 示例随源码保留，供示例配置使用。
 
-本仓库保存的是针对 [FlashRSI](https://github.com/RUC-NLPIR/FlashRSI) 的[代码补丁](patches/flashrsi-ca-rsi-ab1607a.patch)，基准提交固定为 `ab1607ae4fcfdf564d43389181e72f4f5ce651ee`。这样可以复现本次修改，同时保留上游项目的来源和许可信息。补丁包含算法、注册入口、HotpotQA 示例配置、说明和测试。
+源码基于 [FlashRSI](https://github.com/RUC-NLPIR/FlashRSI) 的提交 `ab1607ae4fcfdf564d43389181e72f4f5ce651ee`，保留上游 Apache-2.0 许可证。原有[代码补丁](patches/flashrsi-ca-rsi-ab1607a.patch)继续保留，便于核对本地算法和接入修改；当前源码已经包含这些修改。
 
 ```bash
-git clone https://github.com/RUC-NLPIR/FlashRSI.git
-cd FlashRSI
-git checkout ab1607ae4fcfdf564d43389181e72f4f5ce651ee
-git apply --check ../deeplearning_hm/patches/flashrsi-ca-rsi-ab1607a.patch
-git apply ../deeplearning_hm/patches/flashrsi-ca-rsi-ab1607a.patch
-python3.12 -m pip install -e . pytest
-python3.12 -m pytest tests/test_meta_harness.py tests/test_ca_rsi.py -q
+sh scripts/setup.sh
+.venv/bin/python -m pytest FlashRSI/tests/test_meta_harness.py FlashRSI/tests/test_ca_rsi.py tests -q
 ```
 
-上面的相对路径假设 `FlashRSI` 和本仓库 `deeplearning_hm` 放在同一目录；实际使用时可改成补丁的绝对路径。真实 HotpotQA 运行还需要 Docker、可用的 Target/Worker 模型及各自的 API 凭据。填好 `examples/ca_rsi_hotpotqa.yaml` 后运行 `flashrsi run --config examples/ca_rsi_hotpotqa.yaml`。示例配置只有 8 道训练题、16 道开发题和 16 道测试题，**只用于检查流程**。
+以上命令在本仓库根目录运行。真实 HotpotQA 运行还需要 Docker、可用的 Target/Worker 模型及各自的 API 凭据。填好 `FlashRSI/examples/ca_rsi_hotpotqa.yaml` 后，在 `FlashRSI/` 中运行 `flashrsi run --config examples/ca_rsi_hotpotqa.yaml`。示例配置只有 8 道训练题、16 道开发题和 16 道测试题，**只用于检查流程**。
 
 已复现原有 25 个离线测试；加上 Snapshot、HotpotQA 数据边界、MiniAgent 和新增实验工具检查，共 82 项通过、1 项跳过。算法补丁和实验工具的 Ruff 检查通过，补丁也已在全新的固定版本源码上验证可应用。这些检查不代表真实模型性能。
 
