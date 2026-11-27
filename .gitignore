@@ -9,3 +9,9 @@ __pycache__/
 FlashRSI/
 runs/
 results/private/
+
+# Downloaded datasets and dataset caches stay local.
+data/
+dataset/
+datasets/
+.cache/
