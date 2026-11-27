@@ -4,11 +4,13 @@ import base64
 import json
 import sys
 from pathlib import Path
+from xml.etree import ElementTree
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import export_evolution
+from evolution_diagram import svg_diagram
 from export_evolution import changed_files, export, load_run, refresh, task_rows
 
 
@@ -83,6 +85,7 @@ def test_meta_harness_keeps_best_history_instead_of_last_candidate(tmp_path):
                 "improved_best": False,
             },
         ),
+        ("decision", {"kind": "decline", "step": 2, "problem": "invalid scratch path"}),
         ("decision", {"kind": "promote", "candidate_id": "a"}),
     ]
     for i, (label, record) in enumerate(records):
@@ -95,6 +98,13 @@ def test_meta_harness_keeps_best_history_instead_of_last_candidate(tmp_path):
     assert result["rounds"][1]["variants"][2]["label"] == "历史最好版本"
     assert result["rounds"][1]["variants"][2]["id"] == "a"
     assert result["final_changes"][0]["diff"].endswith("+first")
+    svg = svg_diagram(result)
+    ElementTree.fromstring(svg)
+    assert "第 2 轮选择：保留原有版本" in svg
+    assert svg.count("Snapshot a") == 3
+    assert result["rounds"][2]["baseline_id"] == "seed"
+    assert result["rounds"][2]["selected_id"] == "a"
+    assert result["rounds"][2]["retained_score"] == 1
 
 
 def test_ca_rsi_error_count_does_not_equal_regression_count(tmp_path):
@@ -167,6 +177,9 @@ def test_export_script_termination_is_escaped(tmp_path):
     export([tmp_path], output)
     assert "</script><script>alert(1)" not in output.read_text()
     assert output.with_name("view-inline.html").exists()
+    diagrams = list(output.parent.glob("view-*.svg"))
+    assert len(diagrams) == 1
+    ElementTree.fromstring(diagrams[0].read_text())
 
 
 def test_fresh_audit_tasks_are_not_overwritten_by_retention_or_training(tmp_path):

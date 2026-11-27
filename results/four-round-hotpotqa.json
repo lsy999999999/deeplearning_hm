@@ -1,0 +1,783 @@
+{
+  "date": "2026-11-27",
+  "scope": "single_seed_independent_four_round_end_to_end_pilot_not_equal_budget",
+  "settings": {
+    "model": "DeepSeek-V4-Flash",
+    "seed": 43,
+    "rounds": 4,
+    "split_counts": {
+      "train": 8,
+      "dev": 16,
+      "test": 16
+    },
+    "temperature": 1,
+    "reasoning_effort": "none",
+    "thinking": "disabled",
+    "unlimited_output": true,
+    "target_container": "ca-rsi-runtime:local",
+    "worker_execution": "host_python_subprocess",
+    "parallel_runs": true
+  },
+  "checks": {
+    "same_initial_snapshot": true,
+    "same_dev_test_task_records": true,
+    "test_used_for_selection": false,
+    "equal_token_budget": false
+  },
+  "runs": [
+    {
+      "algorithm": "meta_harness",
+      "run_dir": "runs/study/meta_harness/seed-43/meta_harness-miniagent-hotpotqa-20261127-193656-488919",
+      "status": "finished",
+      "initial_snapshot": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+      "final_snapshot": "210fe08882bc84a096d74973cdf1de57abab7ced5770a70b8693f2d02efc857c",
+      "final_changed_paths": [
+        "agent.yaml",
+        "middleware/answer_format.py",
+        "prompts/extract.md",
+        "prompts/system.md",
+        "skills/main.md"
+      ],
+      "configured_rounds": 4,
+      "recorded_rounds": 4,
+      "rounds": [
+        {
+          "step": 0,
+          "source": "00005-decision.json",
+          "status": "admitted",
+          "problem": null,
+          "baseline_id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+          "candidate_id": "210fe08882bc84a096d74973cdf1de57abab7ced5770a70b8693f2d02efc857c",
+          "selected_id": "210fe08882bc84a096d74973cdf1de57abab7ced5770a70b8693f2d02efc857c",
+          "selected_paths": [
+            "agent.yaml",
+            "middleware/answer_format.py",
+            "prompts/extract.md",
+            "prompts/system.md",
+            "skills/main.md"
+          ],
+          "retained_score": null,
+          "retained_count": null,
+          "retention_count": null,
+          "retention": [],
+          "improved_best": true,
+          "changed_paths": [
+            "agent.yaml",
+            "middleware/answer_format.py",
+            "prompts/extract.md",
+            "prompts/system.md",
+            "skills/main.md"
+          ],
+          "variants": [
+            {
+              "id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+              "paths": [],
+              "score": 0.4375,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0,
+              "count": 16
+            },
+            {
+              "id": "210fe08882bc84a096d74973cdf1de57abab7ced5770a70b8693f2d02efc857c",
+              "paths": [
+                "agent.yaml",
+                "middleware/answer_format.py",
+                "prompts/extract.md",
+                "prompts/system.md",
+                "skills/main.md"
+              ],
+              "score": 0.5,
+              "improved": 3,
+              "regressions": 2,
+              "errors": 0,
+              "count": 16
+            }
+          ]
+        },
+        {
+          "step": 1,
+          "source": "00008-decision.json",
+          "status": "admitted",
+          "problem": null,
+          "baseline_id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+          "candidate_id": "a4960e4415ae73e9f7dfd7a3a73a5ff5877b25e9767d3b9d679daf9c32403254",
+          "selected_id": "210fe08882bc84a096d74973cdf1de57abab7ced5770a70b8693f2d02efc857c",
+          "selected_paths": [],
+          "retained_score": null,
+          "retained_count": null,
+          "retention_count": null,
+          "retention": [],
+          "improved_best": false,
+          "changed_paths": [
+            "middleware/answer_format.py"
+          ],
+          "variants": [
+            {
+              "id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+              "paths": [],
+              "score": 0.4375,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0,
+              "count": 16
+            },
+            {
+              "id": "a4960e4415ae73e9f7dfd7a3a73a5ff5877b25e9767d3b9d679daf9c32403254",
+              "paths": [
+                "middleware/answer_format.py"
+              ],
+              "score": 0.4375,
+              "improved": 2,
+              "regressions": 2,
+              "errors": 0,
+              "count": 16
+            },
+            {
+              "id": "210fe08882bc84a096d74973cdf1de57abab7ced5770a70b8693f2d02efc857c",
+              "paths": [
+                "agent.yaml",
+                "middleware/answer_format.py",
+                "prompts/extract.md",
+                "prompts/system.md",
+                "skills/main.md"
+              ],
+              "score": 0.5,
+              "improved": 3,
+              "regressions": 2,
+              "errors": 0,
+              "count": 16
+            }
+          ]
+        },
+        {
+          "step": 2,
+          "source": "00010-decision.json",
+          "status": "declined",
+          "problem": "path must match exactly one component: .scratch/replay.py",
+          "baseline_id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+          "candidate_id": null,
+          "selected_id": "210fe08882bc84a096d74973cdf1de57abab7ced5770a70b8693f2d02efc857c",
+          "selected_paths": [],
+          "retained_score": 0.5,
+          "retained_count": 16,
+          "retention_count": null,
+          "retention": [],
+          "improved_best": null,
+          "changed_paths": [],
+          "variants": []
+        },
+        {
+          "step": 3,
+          "source": "00013-decision.json",
+          "status": "admitted",
+          "problem": null,
+          "baseline_id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+          "candidate_id": "f275082ce0490920b6fe34803d4ebccfc270bc99f2e93c944e8aa88273a0d7e8",
+          "selected_id": "210fe08882bc84a096d74973cdf1de57abab7ced5770a70b8693f2d02efc857c",
+          "selected_paths": [],
+          "retained_score": null,
+          "retained_count": null,
+          "retention_count": null,
+          "retention": [],
+          "improved_best": false,
+          "changed_paths": [
+            "middleware/answer_shaping.py"
+          ],
+          "variants": [
+            {
+              "id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+              "paths": [],
+              "score": 0.4375,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0,
+              "count": 16
+            },
+            {
+              "id": "f275082ce0490920b6fe34803d4ebccfc270bc99f2e93c944e8aa88273a0d7e8",
+              "paths": [
+                "middleware/answer_shaping.py"
+              ],
+              "score": 0.5,
+              "improved": 2,
+              "regressions": 1,
+              "errors": 0,
+              "count": 16
+            },
+            {
+              "id": "210fe08882bc84a096d74973cdf1de57abab7ced5770a70b8693f2d02efc857c",
+              "paths": [
+                "agent.yaml",
+                "middleware/answer_format.py",
+                "prompts/extract.md",
+                "prompts/system.md",
+                "skills/main.md"
+              ],
+              "score": 0.5,
+              "improved": 3,
+              "regressions": 2,
+              "errors": 0,
+              "count": 16
+            }
+          ]
+        }
+      ],
+      "test": {
+        "tasks": 16,
+        "exact_match": 0.5,
+        "f1": 0.701388888888889
+      },
+      "usage": {
+        "roles": {
+          "target": {
+            "finished": {
+              "input_tokens": 194616,
+              "output_tokens": 450,
+              "cache_read_tokens": 137201,
+              "cache_write_tokens": 0,
+              "usage_entries": 80,
+              "usage_entries_missing_tokens": 0,
+              "sdk_cost_entries": 0,
+              "duplicate_usage_entries": 0,
+              "records": 80,
+              "finished_records": 80,
+              "failed_records": 0,
+              "sdk_cost_usd": null,
+              "cost_bases": []
+            }
+          },
+          "worker": {
+            "finished": {
+              "input_tokens": 4724472,
+              "output_tokens": 63066,
+              "cache_read_tokens": 4258944,
+              "cache_write_tokens": 0,
+              "usage_entries": 124,
+              "usage_entries_missing_tokens": 0,
+              "sdk_cost_entries": 0,
+              "duplicate_usage_entries": 0,
+              "records": 4,
+              "finished_records": 4,
+              "failed_records": 0,
+              "sdk_cost_usd": null,
+              "cost_bases": []
+            }
+          }
+        },
+        "total": {
+          "input_tokens": 4919088,
+          "output_tokens": 63516,
+          "cache_read_tokens": 4396145,
+          "cache_write_tokens": 0,
+          "usage_entries": 204,
+          "usage_entries_missing_tokens": 0,
+          "sdk_cost_entries": 0,
+          "duplicate_usage_entries": 0,
+          "records": 84,
+          "finished_records": 84,
+          "failed_records": 0,
+          "sdk_cost_usd": null,
+          "cost_bases": []
+        },
+        "gateway_actual_cost_usd": null,
+        "scope": "saved_trajectories"
+      },
+      "execution": {
+        "elapsed_seconds": 792.0847548750462,
+        "python": "3.12.16 (main, Nov 24 2026, 16:50:40) [Clang 23.1.3 ]",
+        "scope": "whole_launcher_including_prepare_and_test"
+      },
+      "target_tool_calls": {},
+      "round_2_3_audit_tool_calls": {},
+      "diagram": "results/evolution-view-meta_harness-miniagent-hotpotqa-20261127-193656-488919.svg",
+      "parameters": {
+        "algorithm": {
+          "name": "meta_harness",
+          "max_steps": 4
+        },
+        "target": {
+          "max_turns": 6,
+          "timeout": 300,
+          "container_image": "ca-rsi-runtime:local"
+        },
+        "worker": {
+          "max_turns": 30,
+          "timeout": 600
+        },
+        "benchmark": {
+          "name": "hotpotqa",
+          "split": "auto",
+          "mode": "context",
+          "scoring": "official",
+          "seed": 43,
+          "split_counts": {
+            "train": 8,
+            "dev": 16,
+            "test": 16
+          },
+          "dataset": {
+            "source": "hotpotqa/hotpot_qa",
+            "config": "distractor",
+            "revision": "1908d6afbbead072334abe2965f91bd2709910ab",
+            "splits": [
+              "validation"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "algorithm": "ca_rsi",
+      "run_dir": "runs/study/ca_rsi/seed-43/ca_rsi-miniagent-hotpotqa-20261127-193749-026674",
+      "status": "finished",
+      "initial_snapshot": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+      "final_snapshot": "fb561e435180009495df35bdf7ac1d5194859b80c37fb41e53565275f673fd12",
+      "final_changed_paths": [
+        "prompts/extract.md",
+        "prompts/system.md"
+      ],
+      "configured_rounds": 4,
+      "recorded_rounds": 4,
+      "rounds": [
+        {
+          "step": 0,
+          "source": "00007-audit.json",
+          "status": "audited",
+          "problem": null,
+          "baseline_id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+          "candidate_id": "750d5673cf573c9d4b9907fa7da1421ee67fb9add841c2cc3e8a7c69fadecefd",
+          "selected_id": "4429e8de159d6a09a4ea49a5921e0e081d724c12139499f0a3aaef11b7b9188d",
+          "selected_paths": [
+            "prompts/system.md"
+          ],
+          "retained_score": 0.25,
+          "retained_count": 4,
+          "retention_count": 0,
+          "retention": [],
+          "improved_best": null,
+          "changed_paths": [
+            "prompts/system.md",
+            "skills/main.md"
+          ],
+          "variants": [
+            {
+              "id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+              "paths": [],
+              "score": 0.25,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "4429e8de159d6a09a4ea49a5921e0e081d724c12139499f0a3aaef11b7b9188d",
+              "paths": [
+                "prompts/system.md"
+              ],
+              "score": 0.5,
+              "improved": 1,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "b0e6af8587407fa9433467eba000b6d05165e60a01ad20d436f8097a1991791e",
+              "paths": [
+                "skills/main.md"
+              ],
+              "score": 0.5,
+              "improved": 1,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "750d5673cf573c9d4b9907fa7da1421ee67fb9add841c2cc3e8a7c69fadecefd",
+              "paths": [
+                "prompts/system.md",
+                "skills/main.md"
+              ],
+              "score": 0.25,
+              "improved": 1,
+              "regressions": 1,
+              "errors": 0,
+              "count": 4
+            }
+          ]
+        },
+        {
+          "step": 1,
+          "source": "00020-audit.json",
+          "status": "audited",
+          "problem": null,
+          "baseline_id": "4429e8de159d6a09a4ea49a5921e0e081d724c12139499f0a3aaef11b7b9188d",
+          "candidate_id": "b6b54387e368640e311d4c1b9d91b496029649f27de08f44cdfd4534499f1844",
+          "selected_id": "e69318572630de7a747d439ec6c249cb826abd568156240c08c7379f956be9f3",
+          "selected_paths": [
+            "prompts/extract.md"
+          ],
+          "retained_score": 0.25,
+          "retained_count": 4,
+          "retention_count": 4,
+          "retention": [
+            {
+              "snapshot_id": "e69318572630de7a747d439ec6c249cb826abd568156240c08c7379f956be9f3",
+              "regressions": 0
+            }
+          ],
+          "improved_best": null,
+          "changed_paths": [
+            "prompts/extract.md",
+            "prompts/system.md",
+            "skills/main.md"
+          ],
+          "variants": [
+            {
+              "id": "4429e8de159d6a09a4ea49a5921e0e081d724c12139499f0a3aaef11b7b9188d",
+              "paths": [],
+              "score": 0.25,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "e69318572630de7a747d439ec6c249cb826abd568156240c08c7379f956be9f3",
+              "paths": [
+                "prompts/extract.md"
+              ],
+              "score": 0.5,
+              "improved": 1,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "a883276e237577a796abd94d6da4f15e74c56d826071140094b4fd745ae4539b",
+              "paths": [
+                "prompts/system.md"
+              ],
+              "score": 0.5,
+              "improved": 1,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "b27e61d479ecc848d1b51934d439f4910a3d8e875bc1c422e45a731aaf8f303d",
+              "paths": [
+                "prompts/extract.md",
+                "prompts/system.md"
+              ],
+              "score": 0.5,
+              "improved": 1,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "2a80f835de71ac704208d3e8c805b915d3bb9a526f09742a452f9eaf8a696afa",
+              "paths": [
+                "skills/main.md"
+              ],
+              "score": 0.5,
+              "improved": 1,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "aea0e97979c9919e779fbcdcd7fa07d1e9a98a613ed535b33789e8b2b374ab15",
+              "paths": [
+                "prompts/extract.md",
+                "skills/main.md"
+              ],
+              "score": 0.5,
+              "improved": 1,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "8b3f65acbc596e5581939e7e68b4a92325455d5c102d460d0bc75d17a3c42f87",
+              "paths": [
+                "prompts/system.md",
+                "skills/main.md"
+              ],
+              "score": 0.5,
+              "improved": 1,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "b6b54387e368640e311d4c1b9d91b496029649f27de08f44cdfd4534499f1844",
+              "paths": [
+                "prompts/extract.md",
+                "prompts/system.md",
+                "skills/main.md"
+              ],
+              "score": 0.5,
+              "improved": 1,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            }
+          ]
+        },
+        {
+          "step": 2,
+          "source": "00033-audit.json",
+          "status": "audited",
+          "problem": null,
+          "baseline_id": "e69318572630de7a747d439ec6c249cb826abd568156240c08c7379f956be9f3",
+          "candidate_id": "e586a46d66a71c55b85d05ae3c6533dec1f6a5796e74ee2ec09ba804114393ad",
+          "selected_id": "fb561e435180009495df35bdf7ac1d5194859b80c37fb41e53565275f673fd12",
+          "selected_paths": [
+            "prompts/extract.md"
+          ],
+          "retained_score": 0.0,
+          "retained_count": 4,
+          "retention_count": 8,
+          "retention": [
+            {
+              "snapshot_id": "fb561e435180009495df35bdf7ac1d5194859b80c37fb41e53565275f673fd12",
+              "regressions": 0
+            }
+          ],
+          "improved_best": null,
+          "changed_paths": [
+            "prompts/extract.md",
+            "prompts/system.md",
+            "skills/main.md"
+          ],
+          "variants": [
+            {
+              "id": "e69318572630de7a747d439ec6c249cb826abd568156240c08c7379f956be9f3",
+              "paths": [],
+              "score": 0.0,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "fb561e435180009495df35bdf7ac1d5194859b80c37fb41e53565275f673fd12",
+              "paths": [
+                "prompts/extract.md"
+              ],
+              "score": 0.25,
+              "improved": 1,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "9130562b2fd7426aba4575706c882a5ab9d479b55b49f40cf60af71b9cc146e1",
+              "paths": [
+                "prompts/system.md"
+              ],
+              "score": 0.25,
+              "improved": 1,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "8d1d7c8314ca95a0ea59ad7033651733a09b4a89108358878f4d5d026d4e2aa5",
+              "paths": [
+                "prompts/extract.md",
+                "prompts/system.md"
+              ],
+              "score": 0.25,
+              "improved": 1,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "829a99ec481130d198b2a61e953e0079b161504f0d2f7e59a4e1c12c11429555",
+              "paths": [
+                "skills/main.md"
+              ],
+              "score": 0.0,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "1caacd9c8920de09ddfd5f5e49c514b251f62ba0c6f86a2c9bea1c8442b4860c",
+              "paths": [
+                "prompts/extract.md",
+                "skills/main.md"
+              ],
+              "score": 0.25,
+              "improved": 1,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "3bcb8eb2e7694844ed108ea311633bf82b9b475d3d5d02eaa89a06db6a617610",
+              "paths": [
+                "prompts/system.md",
+                "skills/main.md"
+              ],
+              "score": 0.25,
+              "improved": 1,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            },
+            {
+              "id": "e586a46d66a71c55b85d05ae3c6533dec1f6a5796e74ee2ec09ba804114393ad",
+              "paths": [
+                "prompts/extract.md",
+                "prompts/system.md",
+                "skills/main.md"
+              ],
+              "score": 0.25,
+              "improved": 1,
+              "regressions": 0,
+              "errors": 0,
+              "count": 4
+            }
+          ]
+        },
+        {
+          "step": 3,
+          "source": "00037-audit.json",
+          "status": "skipped_edit_budget",
+          "problem": null,
+          "baseline_id": "fb561e435180009495df35bdf7ac1d5194859b80c37fb41e53565275f673fd12",
+          "candidate_id": "76f4cd8e9c23e2072f2ef2d7b455f51d7ab5ffb75377f74a57f2bc33fab4acda",
+          "selected_id": "fb561e435180009495df35bdf7ac1d5194859b80c37fb41e53565275f673fd12",
+          "selected_paths": [],
+          "retained_score": 0.75,
+          "retained_count": 4,
+          "retention_count": 0,
+          "retention": [],
+          "improved_best": null,
+          "changed_paths": [
+            "agent.yaml",
+            "middleware/answer_format.py",
+            "prompts/system.md",
+            "skills/main.md"
+          ],
+          "variants": []
+        }
+      ],
+      "test": {
+        "tasks": 16,
+        "exact_match": 0.5,
+        "f1": 0.6648809523809524
+      },
+      "usage": {
+        "roles": {
+          "target": {
+            "finished": {
+              "input_tokens": 409609,
+              "output_tokens": 2005,
+              "cache_read_tokens": 269561,
+              "cache_write_tokens": 0,
+              "usage_entries": 157,
+              "usage_entries_missing_tokens": 0,
+              "sdk_cost_entries": 0,
+              "duplicate_usage_entries": 0,
+              "records": 156,
+              "finished_records": 156,
+              "failed_records": 0,
+              "sdk_cost_usd": null,
+              "cost_bases": []
+            }
+          },
+          "worker": {
+            "finished": {
+              "input_tokens": 3976884,
+              "output_tokens": 27969,
+              "cache_read_tokens": 3592960,
+              "cache_write_tokens": 0,
+              "usage_entries": 122,
+              "usage_entries_missing_tokens": 0,
+              "sdk_cost_entries": 0,
+              "duplicate_usage_entries": 0,
+              "records": 4,
+              "finished_records": 4,
+              "failed_records": 0,
+              "sdk_cost_usd": null,
+              "cost_bases": []
+            }
+          }
+        },
+        "total": {
+          "input_tokens": 4386493,
+          "output_tokens": 29974,
+          "cache_read_tokens": 3862521,
+          "cache_write_tokens": 0,
+          "usage_entries": 279,
+          "usage_entries_missing_tokens": 0,
+          "sdk_cost_entries": 0,
+          "duplicate_usage_entries": 0,
+          "records": 160,
+          "finished_records": 160,
+          "failed_records": 0,
+          "sdk_cost_usd": null,
+          "cost_bases": []
+        },
+        "gateway_actual_cost_usd": null,
+        "scope": "saved_trajectories"
+      },
+      "execution": {
+        "elapsed_seconds": 1085.8903250829317,
+        "python": "3.12.16 (main, Nov 24 2026, 16:50:40) [Clang 23.1.3 ]",
+        "scope": "whole_launcher_including_prepare_and_test"
+      },
+      "target_tool_calls": {
+        "list_files": 1
+      },
+      "round_2_3_audit_tool_calls": {
+        "list_files": 1
+      },
+      "diagram": "results/evolution-view-ca_rsi-miniagent-hotpotqa-20261127-193749-026674.svg",
+      "parameters": {
+        "algorithm": {
+          "name": "ca_rsi",
+          "max_steps": 4,
+          "max_edit_units": 3,
+          "max_task_regressions": 0
+        },
+        "target": {
+          "max_turns": 6,
+          "timeout": 300,
+          "container_image": "ca-rsi-runtime:local"
+        },
+        "worker": {
+          "max_turns": 30,
+          "timeout": 600
+        },
+        "benchmark": {
+          "name": "hotpotqa",
+          "split": "auto",
+          "mode": "context",
+          "scoring": "official",
+          "seed": 43,
+          "split_counts": {
+            "train": 8,
+            "dev": 16,
+            "test": 16
+          },
+          "dataset": {
+            "source": "hotpotqa/hotpot_qa",
+            "config": "distractor",
+            "revision": "1908d6afbbead072334abe2965f91bd2709910ab",
+            "splits": [
+              "validation"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

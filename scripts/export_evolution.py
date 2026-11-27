@@ -11,6 +11,7 @@ from pathlib import Path
 from statistics import mean
 
 import yaml
+from evolution_diagram import svg_diagram
 from filelock import FileLock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -186,6 +187,10 @@ def load_run(directory):
                     "invalid": record.get("invalid_variants", []),
                     "retention": record.get("retention_checks", []),
                     "retention_count": len(record.get("retention_task_ids", [])),
+                    "retained_score": mean(x["score"] for x in base.values())
+                    if base
+                    else None,
+                    "retained_count": len(base),
                 }
             )
         if label == "decision" and record.get("kind") == "admit":
@@ -243,15 +248,28 @@ def load_run(directory):
             if record["improved_best"]:
                 best_id, best_score = candidate_id, record["score"]
         if label == "decision" and record.get("kind") == "decline":
+            base_id = (
+                initial_id
+                if method == "meta_harness"
+                else baseline_record.get("snapshot_id")
+            )
+            selected_id = best_id if method == "meta_harness" else base_id
+            retained = evaluations.get(selected_id, {})
             rounds.append(
                 {
                     "step": record["step"],
                     "source": name,
                     "status": "declined",
                     "problem": record.get("problem"),
-                    "baseline_id": None,
+                    "baseline_id": base_id,
                     "candidate_id": None,
-                    "selected_id": None,
+                    "selected_id": selected_id,
+                    "retained_score": best_score
+                    if method == "meta_harness"
+                    else mean(x["score"] for x in retained.values())
+                    if retained
+                    else None,
+                    "retained_count": len(retained),
                     "selected_paths": [],
                     "changes": [],
                     "variants": [],
@@ -340,6 +358,9 @@ def export(directories, output):
                 change["summary"] = notes.get(round_["candidate_id"], {}).get(
                     change["path"], ""
                 )
+        run["diagram"] = svg_diagram(run)
+        diagram_path = output.with_name(output.stem + "-" + run["run"] + ".svg")
+        atomic_write(diagram_path, run["diagram"])
     payload = json.dumps(
         data, ensure_ascii=False, separators=(",", ":"), allow_nan=False
     ).replace("<", "\\u003c")

@@ -1,7 +1,8 @@
 # CA-RSI 实验记录
 
 本文件记录 base 的配置、CA-RSI 相对 base 的实验变量、实际结果和运行成本，后续实验继续追加。
-当前结果更新至 **2026-11-27**，来自 HotpotQA 的单种子、单轮小规模实验。
+当前结果更新至 **2026-11-27**，包含 HotpotQA 的单种子单轮和四轮小规模实验。
+第 1–3.4 节记录历史单轮设置与结果，新增四轮对照及进化图见第 3.5 节。
 原 README 已移至 [项目说明与阶段性分析](docs/archive/project-overview-2026-11-27.md)，
 环境安装和工具使用见 [本地复现说明](docs/local_run.zh-CN.md)。
 
@@ -31,6 +32,7 @@
 | 模型重试参数 | Target / Worker 均为 `llm_max_retries: 1` |
 | 演化轮数 | `max_steps: 1` |
 | 运行镜像 | 启动时指定 `--container-image ca-rsi-runtime:local` |
+| 执行位置 | Target 解题评测在 Docker；Worker 在 Mac 独立 Python 子进程中编辑运行工作目录；模型推理调用矩池云 API |
 | 测试边界 | 只在开发集选择版本；测试集不参与候选生成和选择 |
 
 两组使用同一个初始 Snapshot：
@@ -140,6 +142,87 @@ CA-RSI 的 16 条缺失用量来自失败轨迹，表中 token 是已记录用�
 | CA-RSI | `ca_rsi-miniagent-hotpotqa-20261127-182117-253432` |
 | 完整候选补充测试 | `evaluation-miniagent-hotpotqa-20261127-183044-698897` |
 
+### 3.5 四轮小规模对照（2026-11-27）
+
+本次新开两个独立进程，分别运行原版 Meta-Harness 和 CA-RSI，各配置 4 轮。
+模型、采样、输出长度、Target/Worker 限制、数据版本和评分方式沿用第 1 节；
+train/dev/test 仍为 **8/16/16**，seed **43**。两次运行的初始 Snapshot、
+16 道开发题和 16 道测试题内容已逐条核对一致。
+这是两次独立演化，不是把第 3.1 节的单轮结果接着运行三轮。
+结构化结果、逐轮选择和完整成本统计见
+[`four-round-hotpotqa.json`](results/four-round-hotpotqa.json)。
+
+| 方法 | 配置轮数 / 有效候选评测轮数 | 最终版本 | 测试集 EM | 测试集 F1 |
+| --- | --- | --- | ---: | ---: |
+| Base：Meta-Harness | 4 / 3 | 第一轮完整候选 `210fe08882` | 8/16（50.00%） | 70.14% |
+| CA-RSI | 4 / 3 | 第三轮保留版本 `fb561e4351` | 8/16（50.00%） | 66.49% |
+
+按本次最终答题结果，base 略好：主要指标 EM 相同，F1 高约 **3.65 个百分点**。
+目前只有一个种子、16 道测试题，尚不能判断稳定优劣。
+两组候选来源不同、生成时可见的数据不同，实际 token 预算也不同，
+不能把差异单独归因于 CA-RSI 的组合审计机制。
+
+**Base 的逐轮选择。** 每轮仍从初始 Snapshot 提出候选，Worker 可检索该次运行的历史。
+完整候选只有严格超过历史最高开发分数才替换；同分保留之前的版本。
+
+| 轮次 | 相对初始版本提出的修改 | 候选开发集 EM | 本轮选择 |
+| --- | --- | ---: | --- |
+| 1 | 5 个文件：配置、答案处理 middleware、system/extract prompt 和 main skill | 8/16 | 接受完整候选，改正 3 题、退步 2 题 |
+| 2 | 新增 `middleware/answer_format.py`，未在配置中启用 | 7/16 | 保留第一轮版本 8/16 |
+| 3 | Worker 留下不符合组件规则的 `.scratch/replay.py` | 未评测 | 候选检查失败，保留第一轮版本 |
+| 4 | 新增 `middleware/answer_shaping.py`，未在配置中启用 | 8/16 | 与历史最好同分，保留第一轮版本 |
+
+最终保留 `agent.yaml`、`middleware/answer_format.py`、`prompts/system.md`、
+`prompts/extract.md` 和 `skills/main.md` 这 5 个文件的修改。
+第三轮失败的原始原因是 `path must match exactly one component: .scratch/replay.py`，
+它属于候选文件检查失败，不是一次得分为零的评测。
+
+![Meta-Harness 四轮候选与选择主线](results/evolution-view-meta_harness-miniagent-hotpotqa-20261127-193656-488919.svg)
+
+**CA-RSI 的逐轮选择。** 全部 16 道开发题分为 4 组，每轮只使用 4 道新题。
+下表的各轮分数对应不同题目，不能连成同一批题上的提升曲线，也不等于最终版本在完整开发集上的得分。
+后续轮次选中的组合还须通过之前已用题目的保留检查。
+
+| 轮次 | 提出修改的文件数 | 本轮原版 → 完整候选 EM | 选择后本轮新题 EM | 保留的修改与检查 |
+| --- | ---: | --- | ---: | --- |
+| 1 | 2 | 1/4 → 1/4 | 2/4 | 只保留 `prompts/system.md`；改正 1 题，退步 0 题 |
+| 2 | 3 | 1/4 → 2/4 | 2/4 | 只保留 `prompts/extract.md`；4 道旧题退步 0 题 |
+| 3 | 3 | 0/4 → 1/4 | 1/4 | 只保留 `prompts/extract.md`；8 道旧题退步 0 题 |
+| 4 | 4 | 原版 3/4；候选未评测 | 3/4 | 超过 `max_edit_units: 3`，跳过审计，保留第三轮版本 |
+
+第一轮两个单文件组合均为 2/4，按既定的同分规则选择 `prompts/system.md`。
+第二轮、第三轮也存在多个同分组合，选择器优先修改更少的组合，再按固定文件顺序决胜。
+最终相对初始版本只保留 `prompts/system.md` 和 `prompts/extract.md` 的修改。
+第四轮提出的 `agent.yaml`、`middleware/answer_format.py`、`prompts/system.md`、
+`skills/main.md` 四项修改全部未进入本轮审计，没有放宽上限后补跑。
+
+![CA-RSI 四轮候选与选择主线](results/evolution-view-ca_rsi-miniagent-hotpotqa-20261127-193749-026674.svg)
+
+**已观察到的归因限制。** `prompts/extract.md` 用于 `read_url` 的网页摘要，
+本次 CA-RSI 目标轨迹没有调用 `read_url`，因此不能把第二、三轮的非零分数增益解释为该提示修改的效果。
+同样，base 第二、四轮的新 middleware 没有在 `agent.yaml` 注册，不能解释为这些代码生效后带来得分变化。
+模型温度为 1，各版本分别调用模型，数据划分 seed 不等于模型采样 seed。
+这些现象说明单次采样和每轮 4 道新题的结果存在归因不确定性；
+本次尚未通过重复评测或控制模型随机性来解决这一问题。
+
+**运行成本。** 以下只统计这两次新的四轮运行，包含最终测试和未被采纳候选的 Worker 用量。
+
+| 运行 | 输入 tokens（含缓存） | 输出 tokens | 缓存读取 tokens | 用量条目 | token 用量缺失 | 启动器耗时 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Base 四轮 | 4,919,088 | 63,516 | 4,396,145 | 204 | 0 | 792.08 秒 |
+| CA-RSI 四轮 | 4,386,493 | 29,974 | 3,862,521 | 279 | 0 | 1,085.89 秒 |
+
+CA-RSI 的已记录输入加输出 token 总量更少，但用量条目更多；缓存读取已包含在输入中，不重复相加。
+两组由独立进程并行运行，耗时包含准备、演化和测试，不能据此推断独占资源时的速度差异。
+供应商未提供实际费用，因此不报告金额，也不把 token 更少直接解释为实际费用更低。
+
+本地运行标识：
+
+- Base：`meta_harness-miniagent-hotpotqa-20261127-193656-488919`
+- CA-RSI：`ca_rsi-miniagent-hotpotqa-20261127-193749-026674`
+
+完整轨迹仍在本地 `runs/study/`；仓库保留结构化结果、成本汇总、交互可视化和上面的 SVG 图。
+
 ## 4. 后续实验变量与记录方式
 
 后续每次实验在本 README 追加日期、配置文件、相对 base 改了什么、种子、实际预算、
@@ -173,7 +256,7 @@ open results/evolution-view.html
 
 例如 `MODEL=DeepSeek-V4-Flash ROUNDS=4 SEEDS="43 44 45" bash scripts/run_study.sh`。
 完整参数说明见 [统一实验脚本](docs/local_run.zh-CN.md#统一实验脚本)。
-默认数据规模仍为 8/16/16，只用于流程验证；当前真实结果仍为上文的一轮实验。
+默认数据规模仍为 8/16/16，只用于小规模验证；本次已完成的四轮结果见第 3.5 节。
 
 以下命令复现历史单轮设置，会调用真实模型并产生新运行：
 

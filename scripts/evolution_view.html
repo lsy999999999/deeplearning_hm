@@ -10,6 +10,7 @@
     #harness-evolution-view .ev-mark { display: inline-block; width: 8px; height: 8px; flex-shrink: 0; background: var(--viz-series-1); }
     #harness-evolution-view .ev-heading { margin-block-start: calc(var(--font-size-base, 14px) * .5); }
     #harness-evolution-view summary { cursor: auto; }
+    #ev-diagram svg { display: block; width: 100%; height: auto; }
   </style>
   <h2>这一轮改了什么，最后留下什么</h2>
   <div class="viz-controls">
@@ -22,6 +23,7 @@
   </div>
   <div id="ev-summary" class="card" aria-live="polite"></div>
   <div id="ev-final" class="ev-section"></div>
+  <details open><summary>各轮选择简图</summary><div id="ev-diagram"></div></details>
   <div id="ev-rule" class="text-small"></div>
   <section class="ev-section" aria-labelledby="ev-changes-heading">
     <h3 id="ev-changes-heading">提出的修改</h3>
@@ -98,6 +100,7 @@
       const kept = round?.selected_paths?.length;
       $('#ev-summary').textContent = round ? `第 ${round.step + 1} 轮 · 提出 ${round.changes.length} 个文件修改 → 评估 ${round.variants.filter(v => !v.label).length} 个版本 → ${kept ? `保留 ${kept} 个文件修改` : round.status === 'audited' || round.status === 'admitted' ? '保留原有版本' : '候选未进入选择'} · 最终测试 ${percent(run.test_score)}` : '尚无已记录的进化轮次';
       $('#ev-final').innerHTML = `<div>最终采用：${run.final_changes.length ? run.final_changes.map(f => `<code>${esc(f.path)}</code>`).join(' + ') : '初始版本，没有加入新修改'} · ${esc(short(run.final_id))}</div>`;
+      $('#ev-diagram').innerHTML = run.diagram || '';
       $('#ev-changes').innerHTML = round ? round.changes.map((f, i) => `<details><summary>${esc(f.operation)} · ${esc(f.path)} · ${round.selected_paths.includes(f.path) ? '✓ 本轮保留' : '本轮未保留'}</summary>${f.summary ? `<div>${esc(f.summary)}</div>` : ''}
         <pre><code>${esc(f.diff).split('\n').map(line => `<span class="ev-diff-line ${line.startsWith('+') && !line.startsWith('+++') ? 'ev-added' : line.startsWith('-') && !line.startsWith('---') ? 'ev-removed' : ''}">${line}</span>`).join('')}</code></pre></details>`).join('') || esc(round.problem || round.status) : '';
       $('#ev-variants').innerHTML = round ? round.variants.map((v, i) => `<tr><td><div>${esc(v.label || (v.paths.length ? v.paths.join(' + ') : '原版（不加入修改）'))}</div><button type="button" class="btn" data-variant="${i}" aria-pressed="false">查看${i === 0 ? '原版' : v.label ? '历史版本' : '组合 ' + i}</button></td>
