@@ -62,22 +62,88 @@ def configured(path: Path, values: dict[str, str], *, require_key=True):
     return config
 
 
+def apply_overrides(config, args):
+    """Apply explicit CLI settings after YAML and environment model defaults."""
+    if args.seed is not None:
+        config.benchmark.seed = args.seed
+    if args.output_dir is not None:
+        config.run.output_dir = str(args.output_dir.expanduser().resolve())
+    if args.container_image is not None:
+        config.agent.container_image = args.container_image
+    evaluation = config.run.get("mode") == "evaluate"
+    search_options = (
+        args.algorithm,
+        args.rounds,
+        args.max_edit_units,
+        args.max_task_regressions,
+        args.worker_model,
+        args.worker_max_turns,
+        args.worker_timeout,
+    )
+    if evaluation and any(value is not None for value in search_options):
+        raise ValueError("Frozen evaluation cannot override search/Worker settings")
+    if args.algorithm is not None:
+        config.algorithm.name = args.algorithm
+    if args.rounds is not None:
+        config.algorithm.max_steps = args.rounds
+    roles = [
+        (
+            config.agent,
+            args.target_model if args.target_model is not None else args.model,
+            args.target_max_turns,
+            args.target_timeout,
+        )
+    ]
+    if not evaluation:
+        roles.append(
+            (
+                config.algorithm.worker,
+                args.worker_model if args.worker_model is not None else args.model,
+                args.worker_max_turns,
+                args.worker_timeout,
+            )
+        )
+    for role, model, turns, timeout in roles:
+        if model is not None:
+            if not model.strip():
+                raise ValueError("Model name must not be empty")
+            role.llm.model_name = model
+        if turns is not None:
+            role.max_turns = turns
+        if timeout is not None:
+            role.timeout = timeout
+        if args.temperature is not None:
+            role.llm.setdefault("extra_body", {})["temperature"] = args.temperature
+    for split in ("train", "dev", "test"):
+        count = getattr(args, split + "_size")
+        if count is not None:
+            config.benchmark.setdefault("split_counts", {})[split] = count
+    if not evaluation and config.algorithm.name == "ca_rsi":
+        for key in ("max_edit_units", "max_task_regressions"):
+            value = getattr(args, key)
+            if value is not None:
+                config.algorithm[key] = value
+        units = config.algorithm.get("max_edit_units", 3)
+        if not 1 <= units <= 4:
+            raise ValueError("CA-RSI max_edit_units must be between 1 and 4")
+        if config.algorithm.get("max_task_regressions", 0) < 0:
+            raise ValueError("max_task_regressions must be nonnegative")
+        count = config.benchmark.get("split_counts", {}).get("dev")
+        if count is not None and count < config.algorithm.get("max_steps", 1):
+            raise ValueError("CA-RSI dev-size must be at least the number of rounds")
+    if not evaluation and config.algorithm.name == "meta_harness":
+        for key in ("max_edit_units", "max_task_regressions"):
+            config.algorithm.pop(key, None)
+    return config
+
+
 async def execute(args, values):
     from flashrsi._records import _redact_config
     from flashrsi.runner import _evaluate, _prepare, _prepare_evaluation, _run
 
-    config = configured(args.config, values, require_key=not args.dry_run)
-    if args.seed is not None:
-        config.benchmark.seed = args.seed
-    if args.container_image is not None:
-        config.agent.container_image = args.container_image
-    if args.algorithm is not None:
-        if config.run.get("mode") == "evaluate":
-            raise ValueError("An evaluation cannot override its algorithm")
-        config.algorithm.name = args.algorithm
-        if args.algorithm == "meta_harness":
-            for key in ("max_edit_units", "max_task_regressions"):
-                config.algorithm.pop(key, None)
+    config = apply_overrides(
+        configured(args.config, values, require_key=not args.dry_run), args
+    )
     if args.dry_run:
         print(json.dumps(_redact_config(config), ensure_ascii=False, indent=2))
         return
@@ -131,15 +197,59 @@ async def execute(args, values):
         )
     )
     print(json.dumps({"run_dir": str(directory), "result": result}, ensure_ascii=False))
+    if config.algorithm.name in {"meta_harness", "ca_rsi"}:
+        from export_evolution import refresh
+
+        try:
+            refresh(directory, args.visualization_output)
+        except Exception as error:
+            raise RuntimeError(
+                f"Experiment finished and saved in {directory}; visualization update failed: {error}"
+            ) from error
+        print("Visualization updated:", args.visualization_output)
 
 
-def main():
+def positive_int(text):
+    value = int(text)
+    if value <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return value
+
+
+def temperature(text):
+    import math
+
+    value = float(text)
+    if not math.isfinite(value) or not 0 <= value <= 2:
+        raise argparse.ArgumentTypeError("temperature must be between 0 and 2")
+    return value
+
+
+def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env", type=Path, default=ROOT / ".env")
     parser.add_argument(
         "--config", type=Path, default=ROOT / "configs/hotpotqa_smoke.yaml"
     )
     parser.add_argument("--seed", type=int)
+    parser.add_argument("--model", help="Set both Target and Worker models")
+    parser.add_argument("--target-model", help="Override --model for the Target")
+    parser.add_argument("--worker-model", help="Override --model for the Worker")
+    parser.add_argument("--rounds", "--max-steps", type=positive_int)
+    parser.add_argument("--max-edit-units", type=positive_int)
+    parser.add_argument("--max-task-regressions", type=int)
+    for split in ("train", "dev", "test"):
+        parser.add_argument(f"--{split}-size", type=positive_int)
+    for role in ("target", "worker"):
+        parser.add_argument(f"--{role}-max-turns", type=positive_int)
+        parser.add_argument(f"--{role}-timeout", type=positive_int)
+    parser.add_argument("--temperature", type=temperature)
+    parser.add_argument("--output-dir", type=Path)
+    parser.add_argument(
+        "--visualization-output",
+        type=Path,
+        default=ROOT / "results/evolution-view.html",
+    )
     parser.add_argument("--container-image")
     parser.add_argument("--reuse-evaluations", type=Path)
     parser.add_argument("--algorithm", choices=("ca_rsi", "meta_harness"))
@@ -150,7 +260,11 @@ def main():
     parser.add_argument(
         "--manifest", type=Path, default=ROOT / "results/private/split_manifest.json"
     )
-    args = parser.parse_args()
+    return parser
+
+
+def main():
+    args = build_parser().parse_args()
     values = settings(args.env)
     try:
         if args.check_api:

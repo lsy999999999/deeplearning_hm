@@ -54,6 +54,74 @@ Target 和 Worker 都在内存中获得凭据；保存的配置将凭据置空�
 
 ## 先排错，再做正式评测
 
+### 统一实验脚本
+
+后续实验使用 `scripts/run_study.sh`，主要参数集中在文件开头。
+默认依次运行 Meta-Harness 和 CA-RSI，模型为 `DeepSeek-V4-Flash`，
+4 轮、seed 43，train/dev/test 为 8/16/16。默认规模用于多轮流程验证。
+CA-RSI 将这 16 道开发题分配到 4 轮，每轮使用 4 道新题；
+Meta-Harness 沿用原生规则，每轮使用完整开发集。
+
+```bash
+# 只查看两组的实际配置，不调用模型，也不创建运行目录。
+bash scripts/run_study.sh --dry-run
+
+# 实际运行，结束后自动更新可视化。
+bash scripts/run_study.sh
+open results/evolution-view.html
+```
+
+可直接修改脚本开头的参数，也可以在命令前覆盖同名环境变量：
+
+```bash
+MODEL=DeepSeek-V4-Flash ROUNDS=4 SEEDS="43 44 45" \
+  TRAIN_SIZE=16 DEV_SIZE=128 TEST_SIZE=256 \
+  bash scripts/run_study.sh
+
+# 只运行 CA-RSI，并分别设置解题模型和修改 harness 的模型。
+ALGORITHMS=ca_rsi TARGET_MODEL=DeepSeek-V4-Flash WORKER_MODEL=DeepSeek-V4-Flash \
+  ROUNDS=4 MAX_EDIT_UNITS=3 MAX_TASK_REGRESSIONS=0 \
+  bash scripts/run_study.sh
+```
+
+| 参数 | 默认值 | 作用 |
+| --- | --- | --- |
+| `MODEL` | `DeepSeek-V4-Flash` | Target 和 Worker 的共同模型 |
+| `TARGET_MODEL` / `WORKER_MODEL` | 沿用 `MODEL` | 分别设置解题和演化模型 |
+| `ROUNDS` | 4 | 演化轮数，不等于等算力预算 |
+| `ALGORITHMS` | `meta_harness ca_rsi` | 要运行的算法，按顺序执行 |
+| `SEEDS` | `43` | 数据划分种子，可填多个 |
+| `TRAIN_SIZE` / `DEV_SIZE` / `TEST_SIZE` | 8 / 16 / 16 | 数据规模；CA-RSI 要求 `DEV_SIZE >= ROUNDS` |
+| `MAX_EDIT_UNITS` | 3 | CA-RSI 每轮可修改的文件数上限，范围 1–4；k 个文件最多评估 2^k 个组合 |
+| `MAX_TASK_REGRESSIONS` | 0 | CA-RSI 在本轮新题和旧题检查中允许退步的题数 |
+| `TARGET_MAX_TURNS` / `WORKER_MAX_TURNS` | 6 / 30 | 每次解题和候选生成的交互轮数上限 |
+| `TARGET_TIMEOUT` / `WORKER_TIMEOUT` | 300 / 600 秒 | 单次执行的超时 |
+| `TEMPERATURE` | 1 | 两类模型调用的采样温度 |
+| `CONFIG` | `configs/hotpotqa_pilot.yaml` | 数据版本、评分、思考模式等基础配置 |
+| `CONTAINER_IMAGE` | `ca-rsi-runtime:local` | Target 的运行镜像 |
+| `OUTPUT_DIR` | `runs/study` | 原生记录按算法和种子分别保存，实际运行目录带时间戳 |
+| `VISUALIZATION_OUTPUT` | `results/evolution-view.html` | 汇总可视化页面 |
+
+脚本变量会覆盖基础 YAML 的对应字段，因此更换 `CONFIG` 时也应检查数据规模等变量。
+显式命令行参数优先于 `.env` 中的模型默认值；思考关闭与客户端输出 token 不设上限的设置沿用 YAML。
+Meta-Harness 不使用 `MAX_EDIT_UNITS` 和 `MAX_TASK_REGRESSIONS`，不会因此改变原版选择逻辑。
+`MAX_TURNS` 与 timeout 控制单次执行，不构成整场累计 token 硬预算；原生运行仍记录真实调用和 token 用量。
+
+脚本在实际调用模型之前检查所有算法/种子的参数。执行期间一组失败后继续其他组，
+最后以非零状态报告失败数；成功运行会立即更新可视化，不需要等整批结束。
+也可以直接使用单次入口：
+
+```bash
+.venv/bin/python scripts/run_experiment.py \
+  --config configs/hotpotqa_pilot.yaml --algorithm ca_rsi \
+  --model DeepSeek-V4-Flash --rounds 4 --seed 43 \
+  --max-edit-units 3 --max-task-regressions 0 \
+  --train-size 8 --dev-size 16 --test-size 16 \
+  --container-image ca-rsi-runtime:local
+```
+
+### 历史配置与正式规模模板
+
 | 配置 | train / dev / test | 改进轮数 | 用途 |
 | --- | --- | --- | --- |
 | `hotpotqa_smoke.yaml` | 2 / 4 / 4 | 1 | 小规模完整流程排错 |
@@ -113,6 +181,53 @@ CA-RSI 在得分严格提高且退步数不超过门槛的组合中选最高分�
 ```
 
 ## 结果与成本
+
+### 逐轮进化可视化
+
+直接用浏览器打开 [`results/evolution-view.html`](../results/evolution-view.html)。
+页面可以切换 Meta-Harness / CA-RSI 和进化轮次，展开新增、修改和删除文件的代码差异，
+查看各个已评估组合的开发集得分、改正/退步题数、执行错误以及本轮和最终保留的版本。
+点击“查看组合”可展开逐题变化和原始错误；测试集得分只作最终展示，不参与版本选择。
+
+通过 `scripts/run_study.sh` 或根目录 `scripts/run_experiment.py` 完成实验后，
+自动生成该运行目录内的 `evolution-view.html`，同时更新汇总页面和
+`results/evolution-view-runs.json` 历史索引。已完成的旧运行保留在下拉框中，
+用算法、模型、seed 和运行时间区分，默认展示最新注册的运行。
+失败或中断的实验保留原始错误记录，不登记为已完成实验；dry-run 不更新页面。
+如果实验已保存而导出失败，启动器会明确报告运行目录和可视化错误。
+修复导出问题后，可单独登记该运行并重建页面，避免重新调用模型：
+
+```bash
+.venv/bin/python scripts/export_evolution.py --register --run runs/某组实验/已完成的运行目录
+```
+
+当前已有的真实实验仍是两次单轮运行，脚本默认改成 4 轮不代表已经产生新实验结果。
+首次没有历史索引时，从 README 对应的两份结果清单初始化，不混入早期排错。
+也可手动重新生成，默认读取已登记的运行，不调用模型：
+
+```bash
+.venv/bin/python scripts/export_evolution.py
+open results/evolution-view.html
+```
+
+后续实验可指定任意原生运行目录，重复 `--run` 可以放入多组运行：
+
+```bash
+.venv/bin/python scripts/export_evolution.py \
+  --run runs/某组实验/实际运行目录 \
+  --run runs/另一组实验/实际运行目录 \
+  --output results/evolution-view.html
+```
+
+脚本同时保存结构化的 `evolution-view.json` 和用于会话内展示的
+`evolution-view-inline.html`。实验结束后自动更新磁盘文件，已打开的浏览器页面需要刷新。
+手动指定 `--run` 只导出所列运行；历史索引由实验成功后的自动更新维护。
+主实验文件的中文修改说明单独保存在 `results/evolution-annotations.json`，
+按候选 Snapshot ID 匹配；其他候选仍会显示实际代码差异，不套用旧说明。
+Meta-Harness 对完整候选做选择，没有逐文件消融结果，不能从“保留文件”推断每个文件各自有效。
+CA-RSI 的执行错误单独计数，缺少依赖的组合不解释为语义修改有害。
+
+### 成本汇总
 
 ```bash
 .venv/bin/python scripts/summarize_results.py runs --output results/run-summary.csv

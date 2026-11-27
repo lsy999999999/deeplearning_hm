@@ -1,0 +1,12 @@
+{
+  "09c0b9d8836de7afb534e58a9465a0be384e8385f2a57dfd1240ee343db38cce": {
+    "agent.yaml": "注册 answer_discipline middleware，在输出最终答案前执行处理。",
+    "middleware/answer_discipline.py": "新增短答案处理：去掉前缀、括号别名和多余尾句；识别代码编辑场景并跳过处理。",
+    "prompts/system.md": "新增 Answer discipline 指令：内部推理，输出证据中的简短答案；保留编辑、报告类任务的正常格式。",
+    "skills/main.md": "补充短答案任务步骤：定位证据、排除干扰段落，按问题所需类型提取答案。"
+  },
+  "ab7a4bed5cb6135a19dbe750b2a67ac92e733a47b6e4390547b28ea994d1c6e8": {
+    "agent.yaml": "注册 grounded_answer middleware；只加入这项配置而没有对应文件时，会缺少依赖。",
+    "middleware/grounded_answer.py": "新增答案清理和上下文支持检查：处理别名、修饰语和格式；缺乏支持时要求再答一轮。"
+  }
+}

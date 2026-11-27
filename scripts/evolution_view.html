@@ -1,0 +1,117 @@
+<div id="harness-evolution-view">
+  <style>
+    #harness-evolution-view { display: grid; gap: calc(var(--font-size-base, 14px) * 1); overflow-wrap: anywhere; color: var(--foreground); }
+    #harness-evolution-view .ev-section { display: grid; gap: calc(var(--font-size-base, 14px) * .5); min-width: 0; }
+    #harness-evolution-view pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+    #harness-evolution-view .ev-added { background: color-mix(in srgb, var(--viz-series-1) 12%, transparent); }
+    #harness-evolution-view .ev-removed { background: color-mix(in srgb, var(--viz-series-2) 12%, transparent); }
+    #harness-evolution-view .ev-diff-line { display: block; min-height: 1em; }
+    #harness-evolution-view .ev-cell { display: flex; align-items: center; gap: calc(var(--font-size-base, 14px) * .5); }
+    #harness-evolution-view .ev-mark { display: inline-block; width: 8px; height: 8px; flex-shrink: 0; background: var(--viz-series-1); }
+    #harness-evolution-view .ev-heading { margin-block-start: calc(var(--font-size-base, 14px) * .5); }
+    #harness-evolution-view summary { cursor: auto; }
+  </style>
+  <h2>这一轮改了什么，最后留下什么</h2>
+  <div class="viz-controls">
+    <label class="form-label" for="ev-run">实验
+      <select class="form-select" id="ev-run"></select>
+    </label>
+    <label class="form-label" for="ev-round">进化轮次
+      <select class="form-select" id="ev-round"></select>
+    </label>
+  </div>
+  <div id="ev-summary" class="card" aria-live="polite"></div>
+  <div id="ev-final" class="ev-section"></div>
+  <div id="ev-rule" class="text-small"></div>
+  <section class="ev-section" aria-labelledby="ev-changes-heading">
+    <h3 id="ev-changes-heading">提出的修改</h3>
+    <div id="ev-changes"></div>
+  </section>
+  <section class="ev-section" aria-labelledby="ev-combinations-heading">
+    <h3 id="ev-combinations-heading">评估了哪些版本</h3>
+    <div class="table-responsive"><table class="table table-sm">
+      <thead><tr><th scope="col">版本 / 文件组合</th><th scope="col">开发集得分</th><th scope="col">改正 / 退步</th><th scope="col">执行错误</th><th scope="col">选择结果</th></tr></thead>
+      <tbody id="ev-variants"></tbody>
+    </table></div>
+  </section>
+  <div id="ev-detail" class="ev-section" aria-live="polite"></div>
+  <details><summary>Worker 修改说明（原始输出）</summary><pre id="ev-worker"></pre></details>
+  <details><summary>运行与最终版本</summary><div id="ev-provenance" class="ev-section"></div></details>
+  <script type="application/json" id="ev-data">__EVOLUTION_DATA__</script>
+  <script>
+  (() => {
+    const root = document.getElementById('harness-evolution-view');
+    const $ = s => root.querySelector(s);
+    const data = JSON.parse($('#ev-data').textContent);
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const short = value => value ? value.slice(0, 10) : '未记录';
+    const percent = value => value == null ? '未记录' : `${(value * 100).toFixed(2)}%`;
+    const score = v => v.score == null ? '未评估' : `${percent(v.score)}${v.count ? ` · ${(v.score * v.count).toFixed(2).replace(/\.00$/, '')}/${v.count}` : ''}`;
+    let state = { run: data.runs.length - 1, round: 0, variant: -1 };
+    function restore(saved) {
+      const values = saved?.privateContent;
+      if (values && typeof values === 'object') state = {...state, ...values};
+    }
+    restore(window.openai?.widgetState);
+    function save() {
+      const r = data.runs[state.run], t = r.rounds[state.round];
+      window.openai?.setWidgetState?.({
+        modelContent: {method: r.method, run: r.run, round: t?.step, variant: t?.variants[state.variant]?.id},
+        privateContent: state
+      })?.catch(() => {});
+    }
+    function verdict(run, round, v) {
+      if (v.id === round.selected_id) return '✓ 本轮保留';
+      if (run.method === 'meta_harness') return round.improved_best ? '未选中' : '未超过历史最好版本';
+      if (!v.paths.length) return '原版';
+      const base = round.variants.find(x => x.id === round.baseline_id);
+      const reasons = [];
+      if (v.score <= base.score) reasons.push('得分未严格提高');
+      if (v.regressions > run.max_regressions) reasons.push(`退步超过 ${run.max_regressions} 题`);
+      const retention = round.retention.find(x => x.snapshot_id === v.id);
+      if (retention && retention.regressions > run.max_regressions) reasons.push('旧题保留检查未通过');
+      return reasons.join('；') || '未选中';
+    }
+    function drawDetail() {
+      const run = data.runs[state.run], round = run.rounds[state.round], v = round?.variants[state.variant];
+      if (!v) { $('#ev-detail').innerHTML = ''; return; }
+      $('#ev-variants').querySelectorAll('button').forEach((b, i) => b.setAttribute('aria-pressed', i === state.variant));
+      const label = v.label || (v.paths.length ? v.paths.join(' + ') : '原版（不加入修改）');
+      const affected = v.tasks.filter(x => x.delta !== 0 || x.error || x.status !== 'finished');
+      $('#ev-detail').innerHTML = `<div class="text-small">正在查看：${esc(label)} · ${esc(short(v.id))}</div>
+        <details><summary>逐题变化与错误（${affected.length} 题）</summary>
+        ${affected.length ? affected.map(t => `<div class="ev-section ev-heading">
+          <div>${esc(t.question)}</div><div class="text-small">题目 ${esc(t.id)} · ${t.delta > 0 ? '改正' : t.delta < 0 ? '退步' : '得分不变'} · ${t.before_score} → ${t.score}</div>
+          <div>原版：${esc(t.before)}<br>此版本：${esc(t.output)}<br>参考答案：${esc(t.gold)}</div>
+          ${t.error ? `<pre class="text-destructive">${esc(t.error)}</pre>` : ''}</div>`).join('<hr>') : '<div>没有逐题得分变化或执行错误。</div>'}</details>`;
+    }
+    function draw() {
+      if (!Number.isInteger(state.run) || !data.runs[state.run]) state.run = data.runs.length - 1;
+      const run = data.runs[state.run];
+      if (!Number.isInteger(state.round) || !run.rounds[state.round]) state.round = 0;
+      const round = run.rounds[state.round];
+      $('#ev-run').innerHTML = data.runs.map((r, i) => `<option value="${i}">${esc(r.name)} · ${esc(r.model)} · seed ${esc(r.seed)} · ${esc(r.run.slice(-22))}</option>`).join('');
+      $('#ev-run').value = state.run;
+      $('#ev-round').innerHTML = run.rounds.map((r, i) => `<option value="${i}">第 ${r.step + 1} 轮</option>`).join('');
+      $('#ev-round').value = state.round;
+      $('#ev-rule').textContent = run.method === 'meta_harness' ? '选择规则：完整候选开发集得分严格超过历史最好版本。' : `选择规则：文件组合开发集得分严格提高，退步不超过 ${run.max_regressions} 题；后续轮次还需通过旧题保留检查。`;
+      const kept = round?.selected_paths?.length;
+      $('#ev-summary').textContent = round ? `第 ${round.step + 1} 轮 · 提出 ${round.changes.length} 个文件修改 → 评估 ${round.variants.filter(v => !v.label).length} 个版本 → ${kept ? `保留 ${kept} 个文件修改` : round.status === 'audited' || round.status === 'admitted' ? '保留原有版本' : '候选未进入选择'} · 最终测试 ${percent(run.test_score)}` : '尚无已记录的进化轮次';
+      $('#ev-final').innerHTML = `<div>最终采用：${run.final_changes.length ? run.final_changes.map(f => `<code>${esc(f.path)}</code>`).join(' + ') : '初始版本，没有加入新修改'} · ${esc(short(run.final_id))}</div>`;
+      $('#ev-changes').innerHTML = round ? round.changes.map((f, i) => `<details><summary>${esc(f.operation)} · ${esc(f.path)} · ${round.selected_paths.includes(f.path) ? '✓ 本轮保留' : '本轮未保留'}</summary>${f.summary ? `<div>${esc(f.summary)}</div>` : ''}
+        <pre><code>${esc(f.diff).split('\n').map(line => `<span class="ev-diff-line ${line.startsWith('+') && !line.startsWith('+++') ? 'ev-added' : line.startsWith('-') && !line.startsWith('---') ? 'ev-removed' : ''}">${line}</span>`).join('')}</code></pre></details>`).join('') || esc(round.problem || round.status) : '';
+      $('#ev-variants').innerHTML = round ? round.variants.map((v, i) => `<tr><td><div>${esc(v.label || (v.paths.length ? v.paths.join(' + ') : '原版（不加入修改）'))}</div><button type="button" class="btn" data-variant="${i}" aria-pressed="false">查看${i === 0 ? '原版' : v.label ? '历史版本' : '组合 ' + i}</button></td>
+        <td class="tabular-nums">${esc(score(v))}</td><td class="tabular-nums">+${v.improved} / −${v.regressions}</td><td>${v.errors}${v.count ? `/${v.count}` : ''}</td><td>${v.id === round.selected_id ? '<span class="ev-cell"><span class="ev-mark" aria-hidden="true"></span>' : ''}${esc(verdict(run, round, v))}${v.id === round.selected_id ? '</span>' : ''}</td></tr>`).join('') : '';
+      $('#ev-worker').textContent = round?.worker || '没有已保存的 Worker 输出。';
+      $('#ev-provenance').innerHTML = `<div>运行：<code>${esc(run.source)}</code></div><div>Target：${esc(run.model)} · Worker：${esc(run.worker_model)} · seed ${esc(run.seed)}</div><div>记录：<code>${esc(round?.source)}</code></div><div>最终版本：<code>${esc(run.final_id)}</code></div><div>最终状态：${esc(run.status)} · 已记录 ${run.rounds.length} / 配置 ${esc(run.planned_rounds)} 轮 · 测试 ${esc(run.test_tasks)} 题</div>${round?.retention_count != null ? `<div>旧题保留检查：${round.retention_count} 道旧题，${round.retention.length} 条检查记录</div>` : ''}${round?.invalid?.length ? `<pre>${esc(JSON.stringify(round.invalid, null, 2))}</pre>` : ''}`;
+      if (!round?.variants[state.variant]) state.variant = Math.max(0, round?.variants.findIndex(v => v.id === round.selected_id) ?? 0);
+      drawDetail();
+    }
+    $('#ev-run').addEventListener('change', e => { state = {run: +e.target.value, round: 0, variant: -1}; draw(); save(); });
+    $('#ev-round').addEventListener('change', e => { state.round = +e.target.value; state.variant = -1; draw(); save(); });
+    $('#ev-variants').addEventListener('click', e => { const b = e.target.closest('[data-variant]'); if (b) { state.variant = +b.dataset.variant; drawDetail(); save(); } });
+    window.addEventListener('openai:set_globals', e => { restore(e.detail?.globals?.widgetState); draw(); });
+    draw();
+  })();
+  </script>
+</div>

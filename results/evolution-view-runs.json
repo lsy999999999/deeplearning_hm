@@ -1,0 +1,6 @@
+{
+  "runs": [
+    "runs/meta_harness_hotpotqa_pilot/meta_harness-miniagent-hotpotqa-20261127-183624-453530",
+    "runs/hotpotqa_pilot/ca_rsi-miniagent-hotpotqa-20261127-182117-253432"
+  ]
+}

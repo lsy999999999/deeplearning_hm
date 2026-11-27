@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Meta-Harness 与 CA-RSI 进化记录</title>
+  <style>
+    :root { color-scheme: light dark; --font-size-base: 14px; --background: Canvas; --foreground: CanvasText; --card: Canvas; --card-foreground: CanvasText; --primary: CanvasText; --primary-foreground: Canvas; --border: color-mix(in srgb, CanvasText 20%, Canvas); --muted-foreground: color-mix(in srgb, CanvasText 72%, Canvas); --viz-series-1: light-dark(#087f65, #64d6b2); --viz-series-2: light-dark(#b54529, #ffab87); }
+    * { box-sizing: border-box; }
+    body { max-width: 1100px; margin: auto; padding: 28px 20px; font: 14px/1.6 system-ui, sans-serif; color: var(--foreground); background: var(--background); }
+    h2, h3, p { margin: 0; font-weight: 500; }
+    h2 { font-size: 22px; } h3 { font-size: 16px; }
+    .viz-controls, .viz-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+    .form-label { display: grid; gap: 4px; flex: 1 1 220px; min-width: 0; }
+    .form-select { font: inherit; color: inherit; background: var(--background); border: 1px solid var(--border); border-radius: 5px; padding: 8px; min-width: 0; width: 100%; }
+    .card { padding: 14px; border: 1px solid var(--border); border-radius: 8px; color: var(--card-foreground); background: var(--card); }
+    .btn { display: inline-block; font: inherit; color: inherit; background: transparent; border: 1px solid var(--border); border-radius: 5px; padding: 5px 10px; cursor: pointer; }
+    .btn[aria-pressed="true"] { color: var(--primary-foreground); background: var(--primary); }
+    .table-responsive { overflow-x: auto; }
+    .table { border-collapse: collapse; width: 100%; text-align: left; }
+    .table th, .table td { padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .table th { font-weight: 500; }
+    .text-small { font-size: 12px; }
+    .text-destructive { color: light-dark(#a33220, #ffae98); }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+    code, pre { font-family: ui-monospace, monospace; font-size: 12px; }
+    summary { padding-block: 6px; }
+    hr { border: 0; border-top: 1px solid var(--border); margin: 12px 0; }
+    @media (max-width: 560px) { body { padding: 16px 10px; } .table { min-width: 620px; } }
+    @media (pointer: coarse) { .btn, .form-select, summary { min-height: 44px; } .form-select { font-size: 16px; } }
+  </style>
+</head>
+<body>
+__EVOLUTION_FRAGMENT__
+</body>
+</html>

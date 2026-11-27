@@ -128,6 +128,12 @@ CA-RSI 的 16 条缺失用量来自失败轨迹，表中 token 是已记录用�
 
 完整轨迹位于本地 `runs/`，该目录不提交；仓库保留配置、结构化结果和成本汇总。
 
+两组的逐轮修改、文件差异、组合得分和最终选择可在
+[`进化可视化`](results/evolution-view.html) 中查看。
+通过统一实验脚本或根目录 `scripts/run_experiment.py` 完成实验后自动更新页面，保留历史运行。
+也可运行 `.venv/bin/python scripts/export_evolution.py` 手动重建，不调用模型；
+其他运行目录的用法见 [本地复现说明](docs/local_run.zh-CN.md#逐轮进化可视化)。
+
 | 记录 | 本地运行标识 |
 | --- | --- |
 | Base | `meta_harness-miniagent-hotpotqa-20261127-183624-453530` |
@@ -157,7 +163,19 @@ sh scripts/setup.sh
 docker build -t ca-rsi-runtime:local -f docker/runtime.Dockerfile docker
 ```
 
-以下命令会调用真实模型并产生新运行，仅用于重新实验：
+后续实验推荐使用统一脚本，模型、轮次、种子、数据规模、修改文件数和退步门槛集中在脚本开头：
+
+```bash
+bash scripts/run_study.sh --dry-run  # 查看配置，不调用模型
+bash scripts/run_study.sh            # 默认两组各运行 4 轮，结束后自动更新可视化
+open results/evolution-view.html
+```
+
+例如 `MODEL=DeepSeek-V4-Flash ROUNDS=4 SEEDS="43 44 45" bash scripts/run_study.sh`。
+完整参数说明见 [统一实验脚本](docs/local_run.zh-CN.md#统一实验脚本)。
+默认数据规模仍为 8/16/16，只用于流程验证；当前真实结果仍为上文的一轮实验。
+
+以下命令复现历史单轮设置，会调用真实模型并产生新运行：
 
 ```bash
 # Base：原版 Meta-Harness
