@@ -50,7 +50,7 @@ if [[ ${#study_algorithms[@]} -eq 0 || ${#study_seeds[@]} -eq 0 ]]; then
     exit 2
 fi
 for algorithm in "${study_algorithms[@]}"; do
-    case "$algorithm" in meta_harness|ca_rsi) ;; *) echo "不支持的算法：$algorithm" >&2; exit 2 ;; esac
+    case "$algorithm" in meta_harness|ca_rsi|recursive_ca_rsi) ;; *) echo "不支持的算法：$algorithm" >&2; exit 2 ;; esac
 done
 for seed in "${study_seeds[@]}"; do
     if [[ ! "$seed" =~ ^[0-9]+$ ]]; then echo "无效种子：$seed" >&2; exit 2; fi

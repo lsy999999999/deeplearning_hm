@@ -43,8 +43,13 @@ def compare(audit, max_regressions=0):
             raise ValueError("Regression count disagrees with task deltas")
         variants[mask] = row
     full = (1 << len(paths)) - 1
-    if 0 not in variants or full not in variants:
-        raise ValueError("Baseline and full candidate must both be evaluated")
+    if 0 not in variants:
+        raise ValueError("Baseline must be evaluated")
+    full_invalid = any(
+        set(row["paths"]) == set(paths) for row in audit.get("invalid_variants", [])
+    )
+    if full not in variants and not full_invalid:
+        raise ValueError("Full candidate must be evaluated or explicitly invalid")
     base_score = variants[0]["score"]
     for row in variants.values():
         if not math.isclose(
@@ -81,14 +86,19 @@ def compare(audit, max_regressions=0):
     ]
     selections = {
         "seed": (0, {0}),
-        "accept_full": (full, {0, full}),
         "full_if_improved": (
-            full if variants[full]["score"] > base_score else 0,
-            {0, full},
+            full if full in variants and variants[full]["score"] > base_score else 0,
+            {0, full} & set(variants),
         ),
         "greedy": (greedy, consulted),
         "ca_fresh_dev": (best(eligible) if eligible else 0, set(variants)),
     }
+    if full in variants:
+        selections = {
+            "seed": selections.pop("seed"),
+            "accept_full": (full, {0, full}),
+            **selections,
+        }
     rows = []
     for name, (mask, used) in selections.items():
         row = variants[mask]
@@ -120,6 +130,14 @@ def compare(audit, max_regressions=0):
         "invalid_variants": len(audit.get("invalid_variants", [])),
         "scope": "paired_fresh_dev_only_no_retention_no_test_no_new_proposals",
         "selections": rows,
+        "unavailable_selectors": []
+        if full in variants
+        else [
+            {
+                "selector": "accept_full",
+                "reason": "full candidate invalid; no valid score",
+            }
+        ],
     }
 
 

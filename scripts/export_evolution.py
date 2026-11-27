@@ -114,7 +114,7 @@ def variant(snapshot_id, paths, evaluations, baseline, source, score=None, delta
 def load_run(directory):
     config = yaml.safe_load((directory / "config.yaml").read_text(encoding="utf-8"))
     method = config["algorithm"]["name"]
-    if method not in {"meta_harness", "ca_rsi"}:
+    if method not in {"meta_harness", "ca_rsi", "recursive_ca_rsi"}:
         raise ValueError(f"Unsupported algorithm: {method}")
     records = [
         (p.name, read(p)) for p in sorted((directory / "trajectories").glob("*.json"))
@@ -281,7 +281,12 @@ def load_run(directory):
     promote = next((d for _, d in reversed(records) if d.get("kind") == "promote"), {})
     final_id = result.get("snapshot_id", promote.get("candidate_id"))
     return {
-        "name": "Meta-Harness" if method == "meta_harness" else "CA-RSI",
+        "name": {"meta_harness": "Meta-Harness", "ca_rsi": "CA-RSI",
+                 "recursive_ca_rsi": "Recursive CA-RSI"}[method],
+        "meta_updates": [d for name, d in records if name.endswith("-meta_decision.json")],
+        "diagnoses": [d for name, d in records if name.endswith("-diagnosis.json")],
+        "repairs": [d for name, d in records if name.endswith("-repair.json")],
+        "final_worker_id": result.get("worker_snapshot_id"),
         "method": method,
         "run": directory.name,
         "source": str(directory.relative_to(ROOT))

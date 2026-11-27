@@ -36,6 +36,7 @@
       <tbody id="ev-variants"></tbody>
     </table></div>
   </section>
+  <section id="ev-recursive" class="ev-section" aria-label="Meta 自我改进"></section>
   <div id="ev-detail" class="ev-section" aria-live="polite"></div>
   <details><summary>Worker 修改说明（原始输出）</summary><pre id="ev-worker"></pre></details>
   <details><summary>运行与最终版本</summary><div id="ev-provenance" class="ev-section"></div></details>
@@ -105,6 +106,15 @@
         <pre><code>${esc(f.diff).split('\n').map(line => `<span class="ev-diff-line ${line.startsWith('+') && !line.startsWith('+++') ? 'ev-added' : line.startsWith('-') && !line.startsWith('---') ? 'ev-removed' : ''}">${line}</span>`).join('')}</code></pre></details>`).join('') || esc(round.problem || round.status) : '';
       $('#ev-variants').innerHTML = round ? round.variants.map((v, i) => `<tr><td><div>${esc(v.label || (v.paths.length ? v.paths.join(' + ') : '原版（不加入修改）'))}</div><button type="button" class="btn" data-variant="${i}" aria-pressed="false">查看${i === 0 ? '原版' : v.label ? '历史版本' : '组合 ' + i}</button></td>
         <td class="tabular-nums">${esc(score(v))}</td><td class="tabular-nums">+${v.improved} / −${v.regressions}</td><td>${v.errors}${v.count ? `/${v.count}` : ''}</td><td>${v.id === round.selected_id ? '<span class="ev-cell"><span class="ev-mark" aria-hidden="true"></span>' : ''}${esc(verdict(run, round, v))}${v.id === round.selected_id ? '</span>' : ''}</td></tr>`).join('') : '';
+      const updates = (run.meta_updates || []).filter(x => x.step === round?.step);
+      const diagnoses = (run.diagnoses || []).filter(x => x.step === round?.step);
+      const repairs = (run.repairs || []).filter(x => x.step === round?.step);
+      $('#ev-recursive').innerHTML = run.method === 'recursive_ca_rsi' ?
+        `<h3>Meta 的诊断、修复与自身更新</h3>
+         ${diagnoses.map(d => `<details><summary>诊断 · 尝试 ${d.attempt + 1} · 待验证的原因</summary><pre>${esc(JSON.stringify(d.issues || d.problem, null, 2))}</pre></details>`).join('')}
+         ${repairs.map(r => `<div>Task 修复：${r.accepted_on_train ? '训练检查通过，随后接受独立审计' : '未采用'} · ${esc(r.problem || '')}</div>`).join('')}
+         ${updates.map(m => `<div>Meta 自身修改：${m.accepted ? '通过验证，下一轮启用' : '保留原 Meta'} · ${esc(short(m.worker_before_id))} → ${esc(short(m.worker_candidate_id))} · 验证均分差 ${m.mean_paired_gain == null ? '未评估' : percent(m.mean_paired_gain)}${m.problem ? ' · ' + esc(m.problem) : ''}</div>`).join('')}
+         <div class="text-small">Task 和 Meta 分别保存版本。验证中的临时 Task 修改不会直接替换正式版本。</div>` : '';
       $('#ev-worker').textContent = round?.worker || '没有已保存的 Worker 输出。';
       $('#ev-provenance').innerHTML = `<div>运行：<code>${esc(run.source)}</code></div><div>Target：${esc(run.model)} · Worker：${esc(run.worker_model)} · seed ${esc(run.seed)}</div><div>记录：<code>${esc(round?.source)}</code></div><div>最终版本：<code>${esc(run.final_id)}</code></div><div>最终状态：${esc(run.status)} · 已记录 ${run.rounds.length} / 配置 ${esc(run.planned_rounds)} 轮 · 测试 ${esc(run.test_tasks)} 题</div>${round?.retention_count != null ? `<div>旧题保留检查：${round.retention_count} 道旧题，${round.retention.length} 条检查记录</div>` : ''}${round?.invalid?.length ? `<pre>${esc(JSON.stringify(round.invalid, null, 2))}</pre>` : ''}`;
       if (!round?.variants[state.variant]) state.variant = Math.max(0, round?.variants.findIndex(v => v.id === round.selected_id) ?? 0);

@@ -6,6 +6,15 @@
 原 README 已移至 [项目说明与阶段性分析](docs/archive/project-overview-2026-11-27.md)，
 环境安装和工具使用见 [本地复现说明](docs/local_run.zh-CN.md)。
 
+## 新增：Meta 也能更新自身的递归模式
+
+新增 `recursive_ca_rsi`：Meta 自动诊断和修复 Task 修改，并提出自身策略的修改；
+新旧 Meta 在新的下游改进任务上配对验证，通过后新版才成为下一轮 Worker。
+Task 和 Meta 分别保存版本，最终测试不参与选择。
+本次只完成代码与离线行为验证，尚无该新模式的真实模型性能结果；下文历史实验仍属于原版方法。
+运行配置为 [`recursive_ca_rsi_hotpotqa.yaml`](configs/recursive_ca_rsi_hotpotqa.yaml)，
+流程、数据划分和启动方式见 [递归模式说明](docs/recursive_ca_rsi.zh-CN.md)。
+
 ## 1. Base 配置
 
 本文的 **base 指 FlashRSI 中的原版 Meta-Harness baseline**，配置文件为

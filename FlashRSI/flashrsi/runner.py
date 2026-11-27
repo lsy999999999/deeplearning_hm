@@ -36,6 +36,7 @@ from flashrsi.algorithms import (
     EvoPrompt,
     MetaHarness,
     ModularRSI,
+    RecursiveCARSI,
     SkillAdam,
     SkillOpt,
 )
@@ -129,6 +130,7 @@ _ALGORITHMS = {
     "evo_harness": EvoHarness,
     "meta_harness": MetaHarness,
     "ca_rsi": CARSI,
+    "recursive_ca_rsi": RecursiveCARSI,
     "modular_rsi": ModularRSI,
     "rrsi": RRSI,
     "ace": ACE,
@@ -357,6 +359,8 @@ async def _run(config):
                 if all(name in item.metrics for item in results)
             },
             "benchmark": dict(benchmark.metadata),
+            **({"worker_snapshot_id": worker.snapshot.id}
+               if config.algorithm.name == "recursive_ca_rsi" else {}),
         }
         _write_record(run_dir / "result.json", summary, config)
     except BaseException as exc:

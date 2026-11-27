@@ -1,0 +1,20 @@
+{
+  "scope": "offline_behavior_and_integration_only",
+  "base_commit": "d306dcc",
+  "python": "3.12.11",
+  "tests": {
+    "passed": 123,
+    "skipped": 1,
+    "command": ".venv/bin/python -m pytest FlashRSI/tests/test_recursive_ca_rsi.py FlashRSI/tests/test_ca_rsi.py FlashRSI/tests/test_meta_harness.py FlashRSI/tests/test_algorithm.py FlashRSI/tests/test_snapshot_evaluation.py FlashRSI/tests/test_benchmark_snapshot_boundary.py FlashRSI/tests/test_hotpot_evolution.py FlashRSI/tests/test_miniagent_final_answer.py tests -q -o addopts=",
+    "existing_deprecation_warnings": 16
+  },
+  "ruff": "passed_for_modified_python_files",
+  "git_diff_check": "passed",
+  "launcher_dry_run": "passed",
+  "study_script_dry_run": "passed",
+  "viewer_javascript_syntax": "passed",
+  "real_model_calls": 0,
+  "new_mode_performance_experiment": "not_run",
+  "integration_base_commit": "f61e219",
+  "integration_change": "documentation_and_historical_results_only"
+}

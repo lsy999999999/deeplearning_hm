@@ -118,7 +118,7 @@ def apply_overrides(config, args):
         count = getattr(args, split + "_size")
         if count is not None:
             config.benchmark.setdefault("split_counts", {})[split] = count
-    if not evaluation and config.algorithm.name == "ca_rsi":
+    if not evaluation and config.algorithm.name in {"ca_rsi", "recursive_ca_rsi"}:
         for key in ("max_edit_units", "max_task_regressions"):
             value = getattr(args, key)
             if value is not None:
@@ -131,6 +131,14 @@ def apply_overrides(config, args):
         count = config.benchmark.get("split_counts", {}).get("dev")
         if count is not None and count < config.algorithm.get("max_steps", 1):
             raise ValueError("CA-RSI dev-size must be at least the number of rounds")
+    if not evaluation and config.algorithm.name == "recursive_ca_rsi":
+        steps = config.algorithm.get("max_steps", 2)
+        counts = config.benchmark.get("split_counts", {})
+        reserved = steps * config.algorithm.get("meta_train_tasks_per_step", 2)
+        if counts.get("train", reserved + 1) <= reserved:
+            raise ValueError("recursive_ca_rsi train-size must exceed rounds * meta_train_tasks_per_step")
+        if counts.get("dev", 2 * steps) < 2 * steps:
+            raise ValueError("recursive_ca_rsi dev-size must be at least twice rounds")
     if not evaluation and config.algorithm.name == "meta_harness":
         for key in ("max_edit_units", "max_task_regressions"):
             config.algorithm.pop(key, None)
@@ -197,7 +205,7 @@ async def execute(args, values):
         )
     )
     print(json.dumps({"run_dir": str(directory), "result": result}, ensure_ascii=False))
-    if config.algorithm.name in {"meta_harness", "ca_rsi"}:
+    if config.algorithm.name in {"meta_harness", "ca_rsi", "recursive_ca_rsi"}:
         from export_evolution import refresh
 
         try:
@@ -252,7 +260,7 @@ def build_parser():
     )
     parser.add_argument("--container-image")
     parser.add_argument("--reuse-evaluations", type=Path)
-    parser.add_argument("--algorithm", choices=("ca_rsi", "meta_harness"))
+    parser.add_argument("--algorithm", choices=("ca_rsi", "meta_harness", "recursive_ca_rsi"))
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--dry-run", action="store_true")
     modes.add_argument("--prepare", action="store_true")

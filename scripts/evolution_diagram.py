@@ -44,7 +44,7 @@ def svg_diagram(run):
         f"{run['model']} · seed {run['seed']} · "
         + (
             "每轮使用不同的新开发题；右侧为保留版本"
-            if run.get("method") == "ca_rsi"
+            if run.get("method") in {"ca_rsi", "recursive_ca_rsi"}
             else "同一开发集；右侧主线为保留版本"
         ),
         "small",
@@ -57,7 +57,7 @@ def svg_diagram(run):
         if rounds
         else None
     )
-    initial_label = "首轮新题基线" if run.get("method") == "ca_rsi" else "开发集基线"
+    initial_label = "首轮新题基线" if run.get("method") in {"ca_rsi", "recursive_ca_rsi"} else "开发集基线"
     box(
         520,
         85,

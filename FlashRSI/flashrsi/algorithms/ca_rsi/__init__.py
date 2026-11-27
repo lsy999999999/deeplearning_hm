@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import ast
 from contextlib import ExitStack
 from pathlib import Path
 from tempfile import TemporaryDirectory
+
+import yaml
 
 from flashrsi.algorithms.meta_harness import MetaHarness
 from flashrsi.core import Snapshot
@@ -76,6 +79,7 @@ class CARSI(MetaHarness):
                     )
                     if candidate is None:
                         retention_tasks += tasks
+                        await self._on_round_end(step, incumbent)
                         continue
                     versions.append(candidate)
                     paths = incumbent.changed_paths(candidate)
@@ -90,32 +94,62 @@ class CARSI(MetaHarness):
                             },
                         )
                         retention_tasks += tasks
+                        await self._on_round_end(step, incumbent)
                         continue
 
                     full_mask = (1 << len(paths)) - 1
                     evaluated = {0: (incumbent, baseline)}
-                    evaluated[full_mask] = (
-                        candidate,
-                        await self._evaluate(candidate, tasks, label="audit_candidate"),
-                    )
                     invalid = []
-                    for mask in range(1, full_mask):
+                    baseline_usable = all(
+                        t.status == "finished" and not t.error_message for t in baseline
+                    )
+                    for mask in range(1, full_mask + 1):
                         selected_paths = tuple(
                             path
                             for index, path in enumerate(paths)
                             if mask & (1 << index)
                         )
                         try:
-                            subset = self._subset(incumbent, candidate, selected_paths)
+                            subset = (
+                                candidate
+                                if mask == full_mask
+                                else self._subset(incumbent, candidate, selected_paths)
+                            )
+                            problem = self._variant_problem(subset)
+                            if problem:
+                                raise ValueError(problem)
                         except (OSError, ValueError) as error:
                             invalid.append(
                                 {"paths": selected_paths, "problem": str(error)}
                             )
                             continue
-                        evaluated[mask] = (
+                        if not baseline_usable:
+                            invalid.append(
+                                {
+                                    "paths": selected_paths,
+                                    "problem": "baseline execution failed; comparison unavailable",
+                                }
+                            )
+                            continue
+                        result = await self._evaluate(
                             subset,
-                            await self._evaluate(subset, tasks, label="audit_subset"),
+                            tasks,
+                            label="audit_candidate"
+                            if mask == full_mask
+                            else "audit_subset",
                         )
+                        if any(
+                            t.status != "finished" or t.error_message for t in result
+                        ):
+                            invalid.append(
+                                {
+                                    "paths": selected_paths,
+                                    "snapshot_id": subset.id,
+                                    "problem": "variant execution failed; not a semantic contribution",
+                                }
+                            )
+                            continue
+                        evaluated[mask] = (subset, result)
 
                     rows = []
                     eligible = []
@@ -180,12 +214,26 @@ class CARSI(MetaHarness):
                                     "regressions": regressions,
                                 }
                             )
-                            if regressions > self.config.max_task_regressions:
+                            if (
+                                any(
+                                    t.status != "finished" or t.error_message
+                                    for t in retention_baseline
+                                )
+                                or any(
+                                    t.status != "finished" or t.error_message
+                                    for t in retention
+                                )
+                                or regressions > self.config.max_task_regressions
+                            ):
                                 continue
                         selected_mask = mask
                         break
                     selected = evaluated[selected_mask][0]
-                    full_score = evaluated[full_mask][1].score
+                    full_score = (
+                        evaluated[full_mask][1].score
+                        if full_mask in evaluated
+                        else None
+                    )
                     self._record(
                         "audit",
                         {
@@ -204,7 +252,8 @@ class CARSI(MetaHarness):
                                 path: (
                                     full_score
                                     - evaluated[full_mask ^ (1 << index)][1].score
-                                    if full_mask ^ (1 << index) in evaluated
+                                    if full_score is not None
+                                    and full_mask ^ (1 << index) in evaluated
                                     else None
                                 )
                                 for index, path in enumerate(paths)
@@ -226,12 +275,43 @@ class CARSI(MetaHarness):
                                 incumbent, self.benchmark.train, label="train"
                             )
                     retention_tasks += tasks
+                    await self._on_round_end(step, incumbent)
 
                 return self._promote(
                     seed, incumbent, audit_rounds=self.config.max_steps
                 )
             finally:
                 self._run_dir = run_dir
+
+    async def _on_round_end(self, step: int, incumbent: Snapshot) -> None:
+        """Extension hook; ordinary CA-RSI keeps its independent Worker fixed."""
+
+    @staticmethod
+    def _variant_problem(snapshot: Snapshot) -> str | None:
+        """Check syntax and MiniAgent registration dependencies without model calls.
+
+        Snapshot layout validation alone cannot detect a missing middleware.
+        This is a preflight check, not complete runtime or semantic validation.
+        """
+        try:
+            for path, entry in snapshot.files.items():
+                if path.endswith(".py"):
+                    ast.parse(entry.content, filename=path)
+            if "agent.yaml" in snapshot.files:
+                config = yaml.safe_load(snapshot.files["agent.yaml"].content)
+                if not isinstance(config, dict):
+                    return "agent.yaml must be a mapping"
+                names = config.get("middlewares") or []
+                if not isinstance(names, list) or any(
+                    not isinstance(name, str) for name in names
+                ):
+                    return "agent.yaml middlewares must be a list of names"
+                for name in names:
+                    if f"middleware/{name}.py" not in snapshot.files:
+                        return f"missing registered middleware: {name}"
+        except (SyntaxError, ValueError, yaml.YAMLError, UnicodeError) as error:
+            return str(error)
+        return None
 
     def _subset(
         self, baseline: Snapshot, candidate: Snapshot, paths: tuple[str, ...]
