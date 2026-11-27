@@ -1,0 +1,7 @@
+{
+  "upstream_commit": "ab1607ae4fcfdf564d43389181e72f4f5ce651ee",
+  "evolve_ast_matches_upstream": true,
+  "check_ast_matches_upstream": true,
+  "default_proposal_prompt_words_match_upstream": true,
+  "runtime_settings": "shared DeepSeek Flash, thinking none, no client output-token cap"
+}

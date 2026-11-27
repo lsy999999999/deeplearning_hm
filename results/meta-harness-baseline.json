@@ -1,0 +1,269 @@
+{
+  "generated_at": "2026-11-27T18:42:45.756584+08:00",
+  "algorithm": "meta_harness",
+  "scope": "one_round_native_end_to_end_baseline_pilot",
+  "source_verification": {
+    "upstream_commit": "ab1607ae4fcfdf564d43389181e72f4f5ce651ee",
+    "evolve_ast_matches_upstream": true,
+    "check_ast_matches_upstream": true,
+    "default_proposal_prompt_words_match_upstream": true,
+    "runtime_settings": "shared DeepSeek Flash, thinking none, no client output-token cap"
+  },
+  "run_dir": "runs/meta_harness_hotpotqa_pilot/meta_harness-miniagent-hotpotqa-20261127-183624-453530",
+  "model": "DeepSeek-V4-Flash",
+  "reasoning_effort": "none",
+  "thinking": "disabled",
+  "client_output_token_limit": null,
+  "seed": 43,
+  "split_counts": {
+    "train": 8,
+    "dev": 16,
+    "test": 16
+  },
+  "evolution_steps": 1,
+  "proposer_evidence": "native Meta-Harness development-set (dev) trajectories; the configured train split is not used for proposal evidence",
+  "changed_paths": [
+    "agent.yaml",
+    "middleware/answer_discipline.py",
+    "prompts/system.md",
+    "skills/main.md"
+  ],
+  "baseline_snapshot_id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+  "candidate_snapshot_id": "09c0b9d8836de7afb534e58a9465a0be384e8385f2a57dfd1240ee343db38cce",
+  "selected_snapshot_id": "09c0b9d8836de7afb534e58a9465a0be384e8385f2a57dfd1240ee343db38cce",
+  "accepted_candidate": true,
+  "dev_baseline_score": 0.4375,
+  "dev_candidate_score": 0.625,
+  "dev_improved_tasks": 4,
+  "dev_regressed_tasks": 1,
+  "dev_per_task_delta": {
+    "5a7602d8554299109176e5fb": 0.0,
+    "5ac4f33355429924173fb507": 0.0,
+    "5a7cb993554299452d57b9c2": 1.0,
+    "5a77253455429972597f1449": 0.0,
+    "5a88b3b4554299206df2b336": 0.0,
+    "5aba52e655429939ce03dc94": 1.0,
+    "5a79c7ac5542994bb9457097": 0.0,
+    "5a8e5a635542990e94052ae4": 0.0,
+    "5ab736a65542992aa3b8c7db": 0.0,
+    "5ae09ea05542993d6555ebc1": 1.0,
+    "5ae7940c55429952e35ea984": 0.0,
+    "5a7ccc1e55429909bec7680e": 0.0,
+    "5ade063d5542995b365fabcd": 1.0,
+    "5ae096d755429906c02daadf": 0.0,
+    "5ab55a9b5542992aa134a2ba": 0.0,
+    "5ae1bc7b554299234fd042df": -1.0
+  },
+  "test": {
+    "tasks": 16,
+    "em": 0.5625,
+    "f1": 0.719047619047619
+  },
+  "usage": {
+    "roles": {
+      "target": {
+        "finished": {
+          "input_tokens": 119648,
+          "output_tokens": 206,
+          "cache_read_tokens": 68219,
+          "cache_write_tokens": 0,
+          "usage_entries": 48,
+          "usage_entries_missing_tokens": 0,
+          "sdk_cost_entries": 0,
+          "duplicate_usage_entries": 0,
+          "records": 48,
+          "finished_records": 48,
+          "failed_records": 0,
+          "sdk_cost_usd": null,
+          "cost_bases": []
+        }
+      },
+      "worker": {
+        "finished": {
+          "input_tokens": 609832,
+          "output_tokens": 7748,
+          "cache_read_tokens": 543232,
+          "cache_write_tokens": 0,
+          "usage_entries": 31,
+          "usage_entries_missing_tokens": 0,
+          "sdk_cost_entries": 0,
+          "duplicate_usage_entries": 0,
+          "records": 1,
+          "finished_records": 1,
+          "failed_records": 0,
+          "sdk_cost_usd": null,
+          "cost_bases": []
+        }
+      }
+    },
+    "total": {
+      "input_tokens": 729480,
+      "output_tokens": 7954,
+      "cache_read_tokens": 611451,
+      "cache_write_tokens": 0,
+      "usage_entries": 79,
+      "usage_entries_missing_tokens": 0,
+      "sdk_cost_entries": 0,
+      "duplicate_usage_entries": 0,
+      "records": 49,
+      "finished_records": 49,
+      "failed_records": 0,
+      "sdk_cost_usd": null,
+      "cost_bases": []
+    },
+    "gateway_actual_cost_usd": null,
+    "scope": "saved_trajectories"
+  },
+  "comparison_to_ca_rsi": {
+    "same_seed_snapshot": true,
+    "same_model_and_inference_settings": true,
+    "same_dev_and_test_ids": true,
+    "ca_rsi_test_em": 0.5,
+    "ca_rsi_test_f1": 0.6815476190476191,
+    "ca_rsi_native_usage": {
+      "roles": {
+        "target": {
+          "finished": {
+            "input_tokens": 163586,
+            "output_tokens": 423,
+            "cache_read_tokens": 96886,
+            "cache_write_tokens": 0,
+            "usage_entries": 73,
+            "usage_entries_missing_tokens": 0,
+            "sdk_cost_entries": 0,
+            "duplicate_usage_entries": 0,
+            "records": 72,
+            "finished_records": 72,
+            "failed_records": 0,
+            "sdk_cost_usd": null,
+            "cost_bases": []
+          },
+          "failed": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "usage_entries": 16,
+            "usage_entries_missing_tokens": 16,
+            "sdk_cost_entries": 0,
+            "duplicate_usage_entries": 0,
+            "records": 16,
+            "finished_records": 0,
+            "failed_records": 16,
+            "sdk_cost_usd": null,
+            "cost_bases": []
+          }
+        },
+        "worker": {
+          "finished": {
+            "input_tokens": 897871,
+            "output_tokens": 10283,
+            "cache_read_tokens": 816768,
+            "cache_write_tokens": 0,
+            "usage_entries": 31,
+            "usage_entries_missing_tokens": 0,
+            "sdk_cost_entries": 0,
+            "duplicate_usage_entries": 0,
+            "records": 1,
+            "finished_records": 1,
+            "failed_records": 0,
+            "sdk_cost_usd": null,
+            "cost_bases": []
+          }
+        }
+      },
+      "total": {
+        "input_tokens": 1061457,
+        "output_tokens": 10706,
+        "cache_read_tokens": 913654,
+        "cache_write_tokens": 0,
+        "usage_entries": 120,
+        "usage_entries_missing_tokens": 16,
+        "sdk_cost_entries": 0,
+        "duplicate_usage_entries": 0,
+        "records": 89,
+        "finished_records": 73,
+        "failed_records": 16,
+        "sdk_cost_usd": null,
+        "cost_bases": []
+      },
+      "gateway_actual_cost_usd": null,
+      "scope": "saved_trajectories"
+    },
+    "equal_budget_comparison": false,
+    "same_candidate_comparison": false,
+    "note": "Independent one-round proposal histories; original Meta-Harness sees dev trajectories while CA-RSI sees train trajectories; one seed and 16 held-out tasks."
+  },
+  "failed_test_cases": [
+    {
+      "task_id": "5ac05c245542992a796dece5",
+      "question": "Glad to Be Unhappy is a song composed by what American?",
+      "gold": "Richard Charles Rodgers",
+      "output": "Richard Rodgers",
+      "metrics": {
+        "exact_match": 0.0,
+        "f1": 0.8
+      }
+    },
+    {
+      "task_id": "5ae12fcf5542990adbacf72c",
+      "question": "Astro Boy and The Secret of Kells share which genre of film?",
+      "gold": "Animation",
+      "output": "Animated",
+      "metrics": {
+        "exact_match": 0.0,
+        "f1": 0
+      }
+    },
+    {
+      "task_id": "5adf50c05542992d7e9f931e",
+      "question": "Are both The Sundays and The Radio Dept. dream pop bands? ",
+      "gold": "no",
+      "output": "Yes",
+      "metrics": {
+        "exact_match": 0.0,
+        "f1": 0
+      }
+    },
+    {
+      "task_id": "5ab6e8e6554299710c8d1faf",
+      "question": "Who was a supporting cast member of King Rat and was knighted in February 2001?",
+      "gold": "Sir Thomas Daniel Courtenay",
+      "output": "Tom Courtenay",
+      "metrics": {
+        "exact_match": 0.0,
+        "f1": 0.3333333333333333
+      }
+    },
+    {
+      "task_id": "5abd74c95542993062266ca2",
+      "question": "Who does the current PFA Young Player of the Year currently play for?",
+      "gold": "Premier League club",
+      "output": "Tottenham Hotspur",
+      "metrics": {
+        "exact_match": 0.0,
+        "f1": 0
+      }
+    },
+    {
+      "task_id": "5a83b01c5542996488c2e489",
+      "question": "What Argentinian retired defensive midfielder, and current manager of C.D. Guadalajara, was traded to Parma alongside Sérgio Conçeicão at the end of the 1999–2000 season? ",
+      "gold": "Matías Jesús Almeyda",
+      "output": "Matías Almeyda",
+      "metrics": {
+        "exact_match": 0.0,
+        "f1": 0.8
+      }
+    },
+    {
+      "task_id": "5ac2cb09554299657fa29066",
+      "question": "What team did Travis Cortez Mays play on which currently compete in the Big 12 Conference.?",
+      "gold": "Texas Longhorns men's basketball team",
+      "output": "Texas Longhorns",
+      "metrics": {
+        "exact_match": 0.0,
+        "f1": 0.5714285714285715
+      }
+    }
+  ]
+}

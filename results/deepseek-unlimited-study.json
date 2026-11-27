@@ -1,0 +1,363 @@
+{
+  "generated_at": "2026-11-27T18:33:35.388910+08:00",
+  "scope": "single_seed_shared_candidate_pilot_not_formal_efficacy_evidence",
+  "model": "DeepSeek-V4-Flash",
+  "reasoning_effort": "none",
+  "thinking": "disabled",
+  "client_output_token_limit": null,
+  "seed": 43,
+  "split_counts": {
+    "train": 8,
+    "dev": 16,
+    "test": 16
+  },
+  "run_dir": "runs/hotpotqa_pilot/ca_rsi-miniagent-hotpotqa-20261127-182117-253432",
+  "evaluated_runs": [
+    "/Users/wangqibo/cs3.1/deeplearning/dp/runs/hotpotqa_pilot/ca_rsi-miniagent-hotpotqa-20261127-182117-253432",
+    "runs/hotpotqa_pilot/shared-candidate-tests/evaluation-miniagent-hotpotqa-20261127-183044-698897"
+  ],
+  "audit": {
+    "step": 0,
+    "baseline_id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+    "candidate_id": "ab7a4bed5cb6135a19dbe750b2a67ac92e733a47b6e4390547b28ea994d1c6e8",
+    "changed_paths": [
+      "agent.yaml",
+      "middleware/grounded_answer.py"
+    ],
+    "task_ids": [
+      "5a7602d8554299109176e5fb",
+      "5ac4f33355429924173fb507",
+      "5a7cb993554299452d57b9c2",
+      "5a77253455429972597f1449",
+      "5a88b3b4554299206df2b336",
+      "5aba52e655429939ce03dc94",
+      "5a79c7ac5542994bb9457097",
+      "5a8e5a635542990e94052ae4",
+      "5ab736a65542992aa3b8c7db",
+      "5ae09ea05542993d6555ebc1",
+      "5ae7940c55429952e35ea984",
+      "5a7ccc1e55429909bec7680e",
+      "5ade063d5542995b365fabcd",
+      "5ae096d755429906c02daadf",
+      "5ab55a9b5542992aa134a2ba",
+      "5ae1bc7b554299234fd042df"
+    ],
+    "variants": [
+      {
+        "paths": [],
+        "snapshot_id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+        "score": 0.4375,
+        "per_task_delta": {
+          "5a7602d8554299109176e5fb": 0.0,
+          "5ac4f33355429924173fb507": 0.0,
+          "5a7cb993554299452d57b9c2": 0.0,
+          "5a77253455429972597f1449": 0.0,
+          "5a88b3b4554299206df2b336": 0.0,
+          "5aba52e655429939ce03dc94": 0.0,
+          "5a79c7ac5542994bb9457097": 0.0,
+          "5a8e5a635542990e94052ae4": 0.0,
+          "5ab736a65542992aa3b8c7db": 0.0,
+          "5ae09ea05542993d6555ebc1": 0.0,
+          "5ae7940c55429952e35ea984": 0.0,
+          "5a7ccc1e55429909bec7680e": 0.0,
+          "5ade063d5542995b365fabcd": 0.0,
+          "5ae096d755429906c02daadf": 0.0,
+          "5ab55a9b5542992aa134a2ba": 0.0,
+          "5ae1bc7b554299234fd042df": 0.0
+        },
+        "regressions": 0
+      },
+      {
+        "paths": [
+          "agent.yaml"
+        ],
+        "snapshot_id": "0fc67628bf62cde9ce9f5cbe16e3755252943e5b014d13d384579a6d0229a5e5",
+        "score": 0.0,
+        "per_task_delta": {
+          "5a7602d8554299109176e5fb": 0.0,
+          "5ac4f33355429924173fb507": 0.0,
+          "5a7cb993554299452d57b9c2": 0.0,
+          "5a77253455429972597f1449": -1.0,
+          "5a88b3b4554299206df2b336": 0.0,
+          "5aba52e655429939ce03dc94": 0.0,
+          "5a79c7ac5542994bb9457097": -1.0,
+          "5a8e5a635542990e94052ae4": -1.0,
+          "5ab736a65542992aa3b8c7db": -1.0,
+          "5ae09ea05542993d6555ebc1": 0.0,
+          "5ae7940c55429952e35ea984": 0.0,
+          "5a7ccc1e55429909bec7680e": 0.0,
+          "5ade063d5542995b365fabcd": -1.0,
+          "5ae096d755429906c02daadf": -1.0,
+          "5ab55a9b5542992aa134a2ba": 0.0,
+          "5ae1bc7b554299234fd042df": -1.0
+        },
+        "regressions": 7
+      },
+      {
+        "paths": [
+          "middleware/grounded_answer.py"
+        ],
+        "snapshot_id": "d99509baeed4c9bcacdf5fb840a6746fe9d9d8b61379ed5c024a6a710d1c685f",
+        "score": 0.4375,
+        "per_task_delta": {
+          "5a7602d8554299109176e5fb": 0.0,
+          "5ac4f33355429924173fb507": 0.0,
+          "5a7cb993554299452d57b9c2": 0.0,
+          "5a77253455429972597f1449": -1.0,
+          "5a88b3b4554299206df2b336": 0.0,
+          "5aba52e655429939ce03dc94": 0.0,
+          "5a79c7ac5542994bb9457097": 0.0,
+          "5a8e5a635542990e94052ae4": 0.0,
+          "5ab736a65542992aa3b8c7db": 0.0,
+          "5ae09ea05542993d6555ebc1": 0.0,
+          "5ae7940c55429952e35ea984": 0.0,
+          "5a7ccc1e55429909bec7680e": 1.0,
+          "5ade063d5542995b365fabcd": 0.0,
+          "5ae096d755429906c02daadf": 0.0,
+          "5ab55a9b5542992aa134a2ba": 0.0,
+          "5ae1bc7b554299234fd042df": 0.0
+        },
+        "regressions": 1
+      },
+      {
+        "paths": [
+          "agent.yaml",
+          "middleware/grounded_answer.py"
+        ],
+        "snapshot_id": "ab7a4bed5cb6135a19dbe750b2a67ac92e733a47b6e4390547b28ea994d1c6e8",
+        "score": 0.375,
+        "per_task_delta": {
+          "5a7602d8554299109176e5fb": 0.0,
+          "5ac4f33355429924173fb507": 0.0,
+          "5a7cb993554299452d57b9c2": 0.0,
+          "5a77253455429972597f1449": -1.0,
+          "5a88b3b4554299206df2b336": 0.0,
+          "5aba52e655429939ce03dc94": 0.0,
+          "5a79c7ac5542994bb9457097": 0.0,
+          "5a8e5a635542990e94052ae4": 0.0,
+          "5ab736a65542992aa3b8c7db": 0.0,
+          "5ae09ea05542993d6555ebc1": 0.0,
+          "5ae7940c55429952e35ea984": 1.0,
+          "5a7ccc1e55429909bec7680e": 1.0,
+          "5ade063d5542995b365fabcd": -1.0,
+          "5ae096d755429906c02daadf": 0.0,
+          "5ab55a9b5542992aa134a2ba": 0.0,
+          "5ae1bc7b554299234fd042df": -1.0
+        },
+        "regressions": 3
+      }
+    ],
+    "invalid_variants": [],
+    "retention_task_ids": [],
+    "retention_checks": [],
+    "leave_one_out": {
+      "agent.yaml": -0.0625,
+      "middleware/grounded_answer.py": 0.375
+    },
+    "selected_id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+    "selected_paths": []
+  },
+  "variant_execution_errors": {
+    "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26": {
+      "errors": 0,
+      "tasks": 16
+    },
+    "ab7a4bed5cb6135a19dbe750b2a67ac92e733a47b6e4390547b28ea994d1c6e8": {
+      "errors": 0,
+      "tasks": 16
+    },
+    "d99509baeed4c9bcacdf5fb840a6746fe9d9d8b61379ed5c024a6a710d1c685f": {
+      "errors": 0,
+      "tasks": 16
+    },
+    "0fc67628bf62cde9ce9f5cbe16e3755252943e5b014d13d384579a6d0229a5e5": {
+      "errors": 16,
+      "tasks": 16
+    }
+  },
+  "selectors": [
+    {
+      "selector": "seed",
+      "snapshot_id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+      "selected_paths": [],
+      "dev_score": 0.4375,
+      "dev_gain": 0.0,
+      "regressed_tasks": 0,
+      "tasks": 16,
+      "regression_rate": 0.0,
+      "conditional_harmful_units": 0,
+      "conditional_comparable_units": 0,
+      "consulted_variants": 1,
+      "test_em": 0.5,
+      "test_f1": 0.6815476190476191,
+      "test_tasks": 16
+    },
+    {
+      "selector": "accept_full",
+      "snapshot_id": "ab7a4bed5cb6135a19dbe750b2a67ac92e733a47b6e4390547b28ea994d1c6e8",
+      "selected_paths": [
+        "agent.yaml",
+        "middleware/grounded_answer.py"
+      ],
+      "dev_score": 0.375,
+      "dev_gain": -0.0625,
+      "regressed_tasks": 3,
+      "tasks": 16,
+      "regression_rate": 0.1875,
+      "conditional_harmful_units": 1,
+      "conditional_comparable_units": 2,
+      "consulted_variants": 2,
+      "test_em": 0.375,
+      "test_f1": 0.594047619047619,
+      "test_tasks": 16
+    },
+    {
+      "selector": "full_if_improved",
+      "snapshot_id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+      "selected_paths": [],
+      "dev_score": 0.4375,
+      "dev_gain": 0.0,
+      "regressed_tasks": 0,
+      "tasks": 16,
+      "regression_rate": 0.0,
+      "conditional_harmful_units": 0,
+      "conditional_comparable_units": 0,
+      "consulted_variants": 2,
+      "test_em": 0.5,
+      "test_f1": 0.6815476190476191,
+      "test_tasks": 16
+    },
+    {
+      "selector": "greedy",
+      "snapshot_id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+      "selected_paths": [],
+      "dev_score": 0.4375,
+      "dev_gain": 0.0,
+      "regressed_tasks": 0,
+      "tasks": 16,
+      "regression_rate": 0.0,
+      "conditional_harmful_units": 0,
+      "conditional_comparable_units": 0,
+      "consulted_variants": 3,
+      "test_em": 0.5,
+      "test_f1": 0.6815476190476191,
+      "test_tasks": 16
+    },
+    {
+      "selector": "ca_fresh_dev",
+      "snapshot_id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+      "selected_paths": [],
+      "dev_score": 0.4375,
+      "dev_gain": 0.0,
+      "regressed_tasks": 0,
+      "tasks": 16,
+      "regression_rate": 0.0,
+      "conditional_harmful_units": 0,
+      "conditional_comparable_units": 0,
+      "consulted_variants": 4,
+      "test_em": 0.5,
+      "test_f1": 0.6815476190476191,
+      "test_tasks": 16
+    }
+  ],
+  "failed_test_cases": [
+    {
+      "task_id": "5ac05c245542992a796dece5",
+      "question": "Glad to Be Unhappy is a song composed by what American?",
+      "gold": "Richard Charles Rodgers",
+      "output": "Richard Rodgers",
+      "metrics": {
+        "exact_match": 0.0,
+        "f1": 0.8
+      }
+    },
+    {
+      "task_id": "5ae12fcf5542990adbacf72c",
+      "question": "Astro Boy and The Secret of Kells share which genre of film?",
+      "gold": "Animation",
+      "output": "Animated",
+      "metrics": {
+        "exact_match": 0.0,
+        "f1": 0
+      }
+    },
+    {
+      "task_id": "5adf50c05542992d7e9f931e",
+      "question": "Are both The Sundays and The Radio Dept. dream pop bands? ",
+      "gold": "no",
+      "output": "Yes",
+      "metrics": {
+        "exact_match": 0.0,
+        "f1": 0
+      }
+    },
+    {
+      "task_id": "5ae7882b554299540e5a55dd",
+      "question": "What relationship does Fred Gehrke have to the 23rd overall pick in the 2010 Major League Baseball Draft?",
+      "gold": "great-grandfather",
+      "output": "He is her great-grandfather.",
+      "metrics": {
+        "exact_match": 0.0,
+        "f1": 0.4
+      }
+    },
+    {
+      "task_id": "5ab6e8e6554299710c8d1faf",
+      "question": "Who was a supporting cast member of King Rat and was knighted in February 2001?",
+      "gold": "Sir Thomas Daniel Courtenay",
+      "output": "Tom Courtenay",
+      "metrics": {
+        "exact_match": 0.0,
+        "f1": 0.3333333333333333
+      }
+    },
+    {
+      "task_id": "5abd74c95542993062266ca2",
+      "question": "Who does the current PFA Young Player of the Year currently play for?",
+      "gold": "Premier League club",
+      "output": "Tottenham Hotspur",
+      "metrics": {
+        "exact_match": 0.0,
+        "f1": 0
+      }
+    },
+    {
+      "task_id": "5a83b01c5542996488c2e489",
+      "question": "What Argentinian retired defensive midfielder, and current manager of C.D. Guadalajara, was traded to Parma alongside Sérgio Conçeicão at the end of the 1999–2000 season? ",
+      "gold": "Matías Jesús Almeyda",
+      "output": "Matías Almeyda",
+      "metrics": {
+        "exact_match": 0.0,
+        "f1": 0.8
+      }
+    },
+    {
+      "task_id": "5ac2cb09554299657fa29066",
+      "question": "What team did Travis Cortez Mays play on which currently compete in the Big 12 Conference.?",
+      "gold": "Texas Longhorns men's basketball team",
+      "output": "Texas Longhorns",
+      "metrics": {
+        "exact_match": 0.0,
+        "f1": 0.5714285714285715
+      }
+    }
+  ],
+  "cost": {
+    "input_tokens": 1097241,
+    "output_tokens": 10769,
+    "cache_read_tokens": 946289,
+    "usage_entries": 136,
+    "usage_entries_missing_tokens": 16,
+    "failed_records": 16,
+    "sdk_cost_usd": null,
+    "matpool_actual_charge": null
+  },
+  "limitations": [
+    "One seed and 16 held-out questions only",
+    "CA-RSI, greedy and full-if-improved select the same seed; no incremental CA-RSI benefit is established",
+    "One file subset is missing its middleware dependency and fails all 16 tasks; its score is not evidence of semantic harm",
+    "Shared-matrix collection cost is not the actual separate expense of each replayed selector",
+    "Prior thinking-enabled and output-capped runs are separate debugging history, retained in run-summary.csv"
+  ],
+  "frozen_audit_sha256": "6f796d1746ee7ca573b03208e0dfb29eb3ca517a8c2261937a49f466bd336935"
+}

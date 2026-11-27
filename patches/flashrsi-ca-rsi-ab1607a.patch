@@ -54,10 +54,10 @@ index 0000000..c91681c
 +一个数据集复验，并报告最终成绩、有害修改保留率、逐题退步与调用成本。
 diff --git a/examples/ca_rsi_hotpotqa.yaml b/examples/ca_rsi_hotpotqa.yaml
 new file mode 100644
-index 0000000..8c2e1df
+index 0000000..91b47e8
 --- /dev/null
 +++ b/examples/ca_rsi_hotpotqa.yaml
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,49 @@
 +run:
 +  output_dir: runs/ca_rsi_hotpotqa
 +benchmark:
@@ -74,24 +74,170 @@ index 0000000..8c2e1df
 +    source: hotpotqa/hotpot_qa
 +    config: distractor
 +    revision: 1908d6afbbead072334abe2965f91bd2709910ab
-+    splits: [validation]
++    splits:
++    - validation
 +agent:
 +  name: miniagent
 +  llm:
-+    model_name: your-target-model
++    model_name: DeepSeek-V4-Flash
 +    api_key: null
++    base_url: https://token.matpool.com/v1
++    unlimited_output: true
++    reasoning_effort: none
++    extra_body:
++      thinking:
++        type: disabled
++      temperature: 1
 +algorithm:
 +  name: ca_rsi
 +  worker:
 +    type: agent
 +    name: miniagent
 +    llm:
-+      model_name: your-worker-model
++      model_name: DeepSeek-V4-Flash
 +      api_key: null
++      base_url: https://token.matpool.com/v1
++      unlimited_output: true
++      reasoning_effort: none
++      extra_body:
++        thinking:
++          type: disabled
++        temperature: 1
 +    max_turns: 30
 +  max_steps: 1
 +  max_edit_units: 3
 +  max_task_regressions: 0
+diff --git a/flashrsi/_run_summary.py b/flashrsi/_run_summary.py
+index 3841f42..c9c01a3 100644
+--- a/flashrsi/_run_summary.py
++++ b/flashrsi/_run_summary.py
+@@ -142,6 +142,10 @@ def _records(root):
+     else:
+         for path in sorted((root / "trajectories").glob("*.json")):
+             record = json.loads(path.read_text(encoding="utf-8"))
++            # A resumed evaluation retains evidence for the proposer while the
++            # original run owns its canonical model usage and failure cost.
++            if record.get("reused_from"):
++                continue
+             for trajectory in record.get("trajectories", []):
+                 yield "target", trajectory
+             if "trajectory" in record:
+diff --git a/flashrsi/agents/miniagent/runtime/agent.py b/flashrsi/agents/miniagent/runtime/agent.py
+index b12686a..d9471f1 100644
+--- a/flashrsi/agents/miniagent/runtime/agent.py
++++ b/flashrsi/agents/miniagent/runtime/agent.py
+@@ -128,19 +128,18 @@ class Context:
+         return max(0, self.max_turns - self._current_turn)
+
+     async def side_text(
+-        self, prompt: str, *, purpose: str, max_tokens: int = 500
++        self, prompt: str, *, purpose: str, max_tokens: int | None = None
+     ) -> str | None:
+         if self._side_llm_calls >= self._side_llm_max:
+             self.trace.event("side_llm_budget_exceeded", budget=self._side_llm_max)
+             return None
+         self._side_llm_calls += 1
+-        capped = min(max_tokens, 500)
+         started = time.monotonic()
+         try:
+             result, response = await llm.text(
+                 prompt,
+                 model=llm.SIDE_MODEL,
+-                max_tokens=capped,
++                max_tokens=max_tokens,
+                 _return_response=True,
+             )
+         except Exception as e:
+diff --git a/flashrsi/agents/miniagent/runtime/llm.py b/flashrsi/agents/miniagent/runtime/llm.py
+index 7ec77eb..ba79b3d 100644
+--- a/flashrsi/agents/miniagent/runtime/llm.py
++++ b/flashrsi/agents/miniagent/runtime/llm.py
+@@ -69,10 +69,7 @@ def response_error(response: Any, *, responses_api: bool = False) -> str | None:
+             usage_text.append(f"reasoning_tokens={reasoning_tokens}")
+         if usage_text:
+             message += " (" + ", ".join(usage_text) + ")"
+-        message += (
+-            "; output budget exhausted. Increase llm.max_tokens "
+-            "without disabling reasoning; the configured budget is not increased automatically."
+-        )
++        message += "; generation reached an output limit reported by the provider."
+     return message
+
+
+@@ -106,16 +103,23 @@ def usage_dict(response: Any) -> dict:
+ def configure(config: dict) -> None:
+     """Initialize the native runtime in its independent process."""
+     global API_KEY, DEFAULT_MODEL, SIDE_MODEL, BASE_URL, SIDE_BASE_URL
+-    global MAX_TOKENS, LLM_MAX_RETRIES, REASONING_EFFORT, EXTRA_BODY
++    global MAX_TOKENS, UNLIMITED_OUTPUT, LLM_MAX_RETRIES, REASONING_EFFORT, EXTRA_BODY
+     API_KEY = config.get("api_key") or ""
+     DEFAULT_MODEL = config.get("model_name") or ""
+     SIDE_MODEL = config.get("side_model") or DEFAULT_MODEL
+     BASE_URL = config.get("base_url") or "https://api.openai.com/v1"
+     SIDE_BASE_URL = config.get("side_base_url") or BASE_URL
+-    MAX_TOKENS = config.get("max_tokens", 4096)
++    UNLIMITED_OUTPUT = config.get("unlimited_output", False)
++    MAX_TOKENS = None if UNLIMITED_OUTPUT else config.get("max_tokens")
+     LLM_MAX_RETRIES = max(1, config.get("llm_max_retries", 1))
+     REASONING_EFFORT = config.get("reasoning_effort") or ""
+     EXTRA_BODY = config.get("extra_body") or {}
++    if UNLIMITED_OUTPUT:
++        EXTRA_BODY = {
++            key: value
++            for key, value in EXTRA_BODY.items()
++            if key not in {"max_tokens", "max_completion_tokens", "max_output_tokens"}
++        }
+
+
+ configure({})
+@@ -230,8 +234,10 @@ async def chat(
+     kwargs: dict = {
+         "model": target.removeprefix("openai/"),
+         "messages": messages,
+-        token_field: max_tokens or MAX_TOKENS,
+     }
++    budget = max_tokens if max_tokens is not None else MAX_TOKENS
++    if not UNLIMITED_OUTPUT and budget is not None:
++        kwargs[token_field] = budget
+     if tools:
+         kwargs.update(tools=tools, tool_choice=tool_choice)
+     elif tool_choice == "none":
+@@ -260,10 +266,12 @@ async def responses(
+     kwargs: dict = {
+         "model": model.removeprefix("openai/"),
+         "input": input,
+-        "max_output_tokens": max_output_tokens or MAX_TOKENS,
+         "store": False,
+         "include": ["reasoning.encrypted_content"],
+     }
++    budget = max_output_tokens if max_output_tokens is not None else MAX_TOKENS
++    if not UNLIMITED_OUTPUT and budget is not None:
++        kwargs["max_output_tokens"] = budget
+     if instructions is not None:
+         kwargs["instructions"] = instructions
+     if tools:
+@@ -286,7 +294,7 @@ async def text(
+     prompt: str,
+     *,
+     model: str | None = None,
+-    max_tokens: int = 2048,
++    max_tokens: int | None = None,
+     _max_retries: int | None = None,
+     _return_response: bool = False,
+ ) -> Any:
+diff --git a/flashrsi/agents/miniagent/runtime/reader.py b/flashrsi/agents/miniagent/runtime/reader.py
+index 468d8c1..4a265ca 100644
+--- a/flashrsi/agents/miniagent/runtime/reader.py
++++ b/flashrsi/agents/miniagent/runtime/reader.py
+@@ -31,7 +31,7 @@ async def read_url_with_raw(
+     page_text = raw
+     prompt = extract_prompt.replace("{focus}", focus).replace("{chunk}", page_text)
+     try:
+-        out = await llm.text(prompt, model=llm.SIDE_MODEL, max_tokens=12800)
++        out = await llm.text(prompt, model=llm.SIDE_MODEL)
+     except Exception as e:
+         return {"extracted": f"[reader] extract error: {e}", "raw": raw}
+
 diff --git a/flashrsi/algorithms/__init__.py b/flashrsi/algorithms/__init__.py
 index dab316e..ac7aebe 100644
 --- a/flashrsi/algorithms/__init__.py
@@ -114,10 +260,10 @@ index dab316e..ac7aebe 100644
      "EvoPrompt",
 diff --git a/flashrsi/algorithms/ca_rsi/__init__.py b/flashrsi/algorithms/ca_rsi/__init__.py
 new file mode 100644
-index 0000000..c2de571
+index 0000000..83b7cc2
 --- /dev/null
 +++ b/flashrsi/algorithms/ca_rsi/__init__.py
-@@ -0,0 +1,249 @@
+@@ -0,0 +1,252 @@
 +"""Counterfactual audit of file-level harness edits before promotion."""
 +
 +from __future__ import annotations
@@ -188,7 +334,10 @@ index 0000000..c2de571
 +                        history_labels=frozenset({"train", "worker"}),
 +                        records_description=(
 +                            "training evaluations and Worker traces only. Audit tasks, "
-+                            "scores and selection records are withheld from the Worker."
++                            "scores and selection records are withheld from the Worker. "
++                            f"Edit at most {self.config.max_edit_units} distinct harness "
++                            "files in this proposal: a new, changed or deleted file "
++                            "each counts as one edit unit. Larger proposals are skipped."
 +                        ),
 +                    )
 +                    if candidate is None:
@@ -374,7 +523,7 @@ index 0660578..f700254 100644
 @@ -81,7 +81,15 @@ class MetaHarness(Algorithm):
              finally:
                  self._run_dir = run_dir
- 
+
 -    async def _propose(self, seed, versions, step) -> Snapshot | None:
 +    async def _propose(
 +        self,
@@ -386,7 +535,7 @@ index 0660578..f700254 100644
 +        records_description: str | None = None,
 +    ) -> Snapshot | None:
          """Expose historical native checkouts and records beside the editable seed.
- 
+
          Nested references travel with working_dir to a container Worker. They
 @@ -108,15 +116,29 @@ class MetaHarness(Algorithm):
                  (history / "index.json").write_text(
@@ -433,21 +582,21 @@ index b638b33..8e5c334 100644
 -  Evaluation records link task inputs, outputs, messages, metrics and errors to
 -  Snapshot IDs. Score/decision records report aggregate scores and attempted edits.
 +- `{history}/trajectories/` contains {records_description}
- 
+
  Use your file and terminal tools to selectively inspect the history. Read actual
  source and successful/failed trajectories as needed, including low-scoring and
 diff --git a/flashrsi/runner.py b/flashrsi/runner.py
-index d8404de..86df379 100644
+index d8404de..cf163b2 100644
 --- a/flashrsi/runner.py
 +++ b/flashrsi/runner.py
-@@ -30,6 +30,7 @@ from flashrsi.algorithms import (
+@@ -26,6 +26,7 @@ from flashrsi.algorithms import (
+     ACE,
+     ADAS,
+     AHE,
++    CARSI,
+     GEPA,
      OPRO,
      RRSI,
-     Arbor,
-+    CARSI,
-     DarwinX,
-     EvoHarness,
-     EvoPrompt,
 @@ -127,6 +128,7 @@ _ALGORITHMS = {
      "darwinx": DarwinX,
      "evo_harness": EvoHarness,
@@ -458,10 +607,10 @@ index d8404de..86df379 100644
      "ace": ACE,
 diff --git a/tests/test_ca_rsi.py b/tests/test_ca_rsi.py
 new file mode 100644
-index 0000000..99285d0
+index 0000000..154510d
 --- /dev/null
 +++ b/tests/test_ca_rsi.py
-@@ -0,0 +1,198 @@
+@@ -0,0 +1,199 @@
 +"""Offline counterfactual audit tests."""
 +
 +import asyncio
@@ -600,6 +749,7 @@ index 0000000..99285d0
 +            all("audit" not in name for name in self.worker.seen_records[0])
 +        )
 +        self.assertIn("training evaluations", self.worker.prompts[0])
++        self.assertIn("Edit at most 3 distinct harness files", self.worker.prompts[0])
 +        self.assertNotIn("Score/decision records", self.worker.prompts[0])
 +
 +    def test_fresh_dev_tasks_and_audit_records_remain_hidden(self):
@@ -666,8 +816,8 @@ index 3fe8df6..3cc8c33 100644
 +++ b/tests/test_meta_harness.py
 @@ -67,7 +67,7 @@ def history(prompt, directory):
      return index_path.parent, json.loads(index_path.read_text())
- 
- 
+
+
 -def setup(monkeypatch, tmp_path, edit, *, cls=MiniAgent, relocate=False, **options):
 +def make_setup(monkeypatch, tmp_path, edit, *, cls=MiniAgent, relocate=False, **options):
      source = tmp_path / "source"
@@ -676,7 +826,7 @@ index 3fe8df6..3cc8c33 100644
 @@ -171,7 +171,7 @@ def test_full_history_includes_regressions_and_survives_workspace_relocation(
              ["GOOD", "WORSE", "GREAT"][len(seen) - 1], newline="\n"
          )
- 
+
 -    algo, calls = setup(
 +    algo, calls = make_setup(
          monkeypatch, tmp_path, edit, cls=cls, relocate=relocate, max_steps=3
@@ -685,7 +835,7 @@ index 3fe8df6..3cc8c33 100644
 @@ -202,7 +202,7 @@ def test_ties_keep_the_earlier_best_after_later_regressions(monkeypatch, tmp_pat
      def edit(prompt, directory):
          (directory / "skills/main.md").write_text(next(markers), newline="\n")
- 
+
 -    algo, _ = setup(monkeypatch, tmp_path, edit, max_steps=3)
 +    algo, _ = make_setup(monkeypatch, tmp_path, edit, max_steps=3)
      run_dir = attach_run(algo, tmp_path)
@@ -694,7 +844,7 @@ index 3fe8df6..3cc8c33 100644
 @@ -245,7 +245,7 @@ def test_invalid_edits_consume_one_attempt_and_next_round_reads_the_rejection(
              assert any(row.get("kind") == "decline" for row in records)
              (directory / "skills/main.md").write_text("GOOD", newline="\n")
- 
+
 -    algo, calls = setup(monkeypatch, tmp_path, edit, max_steps=2)
 +    algo, calls = make_setup(monkeypatch, tmp_path, edit, max_steps=2)
      directory = attach_run(algo, tmp_path)
@@ -703,7 +853,7 @@ index 3fe8df6..3cc8c33 100644
 @@ -269,7 +269,7 @@ def test_history_changes_are_discarded_and_rebuilt_from_native_records(
          (directory / "skills/__pycache__").mkdir()
          (directory / "skills/__pycache__/generated.pyc").write_bytes(b"cache")
- 
+
 -    algo, _ = setup(monkeypatch, tmp_path, edit, max_steps=2)
 +    algo, _ = make_setup(monkeypatch, tmp_path, edit, max_steps=2)
      final = asyncio.run(algo.evolve())
@@ -712,7 +862,7 @@ index 3fe8df6..3cc8c33 100644
 @@ -284,7 +284,7 @@ def test_worker_failure_aborts_and_cleans_all_checkouts(
          assert len(index) == 1 and folder.is_dir()
          return Trajectory(status="error", error_message="provider failed")
- 
+
 -    algo, _ = setup(monkeypatch, tmp_path, fail)
 +    algo, _ = make_setup(monkeypatch, tmp_path, fail)
      run_dir = attach_run(algo, tmp_path) if persistent else None
@@ -721,7 +871,7 @@ index 3fe8df6..3cc8c33 100644
 @@ -307,7 +307,7 @@ def test_direct_python_use_provides_full_history_and_restores_recording_state(
          )
          (directory / "skills/main.md").write_text("GOOD", newline="\n")
- 
+
 -    algo, _ = setup(monkeypatch, tmp_path, edit)
 +    algo, _ = make_setup(monkeypatch, tmp_path, edit)
      final = asyncio.run(algo.evolve())
@@ -733,8 +883,8 @@ index 3fe8df6..3cc8c33 100644
      with pytest.raises(ValueError, match="max_steps"):
 -        setup(monkeypatch, tmp_path, lambda *args: None, max_steps=value)
 +        make_setup(monkeypatch, tmp_path, lambda *args: None, max_steps=value)
- 
- 
+
+
  def test_text_only_worker_and_empty_search_split_are_rejected(monkeypatch, tmp_path):
 -    algo, calls = setup(monkeypatch, tmp_path, lambda *args: None)
 +    algo, calls = make_setup(monkeypatch, tmp_path, lambda *args: None)

@@ -1,0 +1,1 @@
+PASS: active roles use DeepSeek Flash, reasoning none, no client output-token cap; four audit variants and two unique held-out evaluations finished; cost rows agree with report; secret checks passed.

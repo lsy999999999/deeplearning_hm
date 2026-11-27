@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+.venv/
+.tools/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+FlashRSI/
+runs/
+results/private/
