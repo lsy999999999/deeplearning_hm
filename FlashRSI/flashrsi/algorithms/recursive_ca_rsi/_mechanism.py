@@ -18,8 +18,19 @@ from flashrsi.core.snapshot import _validate_path
 ENTRY = Path(__file__).with_name("_rule_entry.py")
 
 
-def collect_cases(snapshot, trajectories, limit):
+CASE_SELECTION = (
+    "learning-strata-v1: regression, triggered, failure, unchanged; round-robin"
+)
+
+
+def collect_cases(snapshot, trajectories, limit, *, baseline=(), primary_metric=None):
+    """Select within learning data using a fixed, recorded coverage policy.
+
+    A changed answer is not necessarily harmful. Include no-op controls and
+    failures as well, without consulting future audit or test outcomes.
+    """
     cases, skipped = [], []
+    previous = {row.task.task_id: row for row in baseline}
     for trajectory in trajectories:
         task_id = trajectory.task.task_id
         receipts = trajectory.usage.get("rule_replays", ())
@@ -56,9 +67,29 @@ def collect_cases(snapshot, trajectories, limit):
         if reason:
             skipped.append({"task_id": task_id, "reason": reason})
             continue
-        if len(cases) >= limit:
-            skipped.append({"task_id": task_id, "reason": "fixed case budget reached"})
-            continue
+        triggered = [e["rule"]["rule_id"] for e in events if e["before"] != e["after"]]
+        old = previous.get(task_id)
+        regressed = bool(
+            old is not None
+            and any(
+                trajectory.metrics.get(metric, value) < value
+                for metric, value in old.metrics.items()
+                if primary_metric is None or metric == primary_metric
+            )
+        )
+        stratum = (
+            "regression"
+            if regressed
+            else "triggered"
+            if triggered
+            else "failure"
+            if any(
+                v == 0
+                for k, v in trajectory.metrics.items()
+                if primary_metric is None or k == primary_metric
+            )
+            else "unchanged"
+        )
         cases.append(
             {
                 "id": f"{task_id}::final-boundary",
@@ -68,10 +99,35 @@ def collect_cases(snapshot, trajectories, limit):
                 "answer": receipt["answer"],
                 "evidence": copy.deepcopy(receipt["evidence"]),
                 "observed_output": receipt["output"],
+                "selection": {
+                    "policy": CASE_SELECTION,
+                    "stratum": stratum,
+                    "triggered_rules": triggered,
+                    "observed_regression": regressed,
+                },
                 "trajectory": trajectory,
             }
         )
-    return cases, skipped
+    buckets = {
+        name: [case for case in cases if case["selection"]["stratum"] == name]
+        for name in ("regression", "triggered", "failure", "unchanged")
+    }
+    selected = []
+    while len(selected) < limit and any(buckets.values()):
+        for bucket in buckets.values():
+            if bucket and len(selected) < limit:
+                selected.append(bucket.pop(0))
+    chosen = {case["id"] for case in selected}
+    skipped.extend(
+        {
+            "task_id": case["task_id"],
+            "reason": "fixed case budget reached",
+            "selection": case["selection"],
+        }
+        for case in cases
+        if case["id"] not in chosen
+    )
+    return selected, skipped
 
 
 def visible_cases(cases):

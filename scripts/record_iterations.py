@@ -90,6 +90,8 @@ def append_entries(entries, output=DEFAULT_OUTPUT):
 
 def native_entries(directory, output):
     labels = {
+        "rule_case_selection",
+        "repair_gate",
         "code_change",
         "audit",
         "repair",

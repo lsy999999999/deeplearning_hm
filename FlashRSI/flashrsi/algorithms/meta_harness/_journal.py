@@ -105,6 +105,8 @@ def render_event(event_id, label, payload, source):
         "diagnosis": "Meta 诊断假设",
         "meta_decision": "Meta 自身换版决定",
         "rule_intervention": "规则干预执行证据",
+        "rule_case_selection": "规则案例选择与覆盖",
+        "repair_gate": "修复前证据检查",
         "decision": "Task 选择或无修改决定",
     }
     if label not in titles:

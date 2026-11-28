@@ -1,0 +1,52 @@
+{
+  "status": "passed",
+  "base_commit": "3ec2cf8d200107353ee79b794aba9dab745126bb",
+  "created_at_utc": "2026-11-28T10:50:25.171931+00:00",
+  "tests_passed": 111,
+  "utcnow_deprecation_warnings": 20,
+  "python": "Python 3.14.3",
+  "original_demo_artifacts_unchanged": 228,
+  "first_natural_experiment_files_unchanged": [
+    "results/fixed-meta-diagnosis-20261128/FINDINGS_CN.md",
+    "results/fixed-meta-diagnosis-20261128/REPORT_CN.md",
+    "results/fixed-meta-diagnosis-20261128/evidence.json",
+    "results/fixed-meta-diagnosis-20261128-plan.json",
+    "configs/fixed_meta_diagnosis_20261128.yaml"
+  ],
+  "existing_journal_prefix_unchanged": true,
+  "new_config_dry_run": "passed; no data preparation or model calls",
+  "sixth_trigger_selection": "passed synthetic regression test; not a reanalysis of the original eight trajectories",
+  "old_prose_diagnosis": "frozen public record rejected by new observation/request schema; no historical result rewritten",
+  "noop_repair": "no repair_check evaluation and no repeated frozen-boundary audit",
+  "runtime_loop_guard": "three identical checks stop the mocked 30-turn run; one tool-free finalization; actual file edit resets count",
+  "oversized_input": "stops before mocked API is called",
+  "supported_repair_and_useful_rule_rejection": "passed real pure-rule subprocess replay with controlled agents",
+  "retrospective_review_cli": "passed on controlled saved learning records; refuses test record and preserves inputs",
+  "original_eight_trajectory_review": "not run; original private run is unavailable locally",
+  "live_model_calls_this_change": 0,
+  "scientific_scope": "framework repair and offline software validation; no new natural-model attribution/repair efficacy claim",
+  "checks": [
+    "related pytest suite",
+    "ruff",
+    "git diff --check",
+    "original hashes",
+    "frozen natural-experiment files",
+    "new configuration dry-run"
+  ],
+  "code_sha256": {
+    "FlashRSI/flashrsi/agents/miniagent/__init__.py": "59e1ea452829937c236f70e1839c001247f172fd2069ec2dd02ab92f8a19b9aa",
+    "FlashRSI/flashrsi/agents/miniagent/runtime/agent.py": "47b678ea67f4a73f8bca97fb3d5ba1b53a06dbde9c78c997704024d21a3ee915",
+    "FlashRSI/flashrsi/agents/miniagent/runtime/loop_guard.py": "f8126c39d9f352887deadb1f993787d4a86fe4681059e1881d51d8cecd2cd14a",
+    "FlashRSI/flashrsi/algorithms/meta_harness/_journal.py": "d183180cd3cac0db03bd471a5a1b9a0879f071e06784cf5002d22d80ad1869a2",
+    "FlashRSI/flashrsi/algorithms/recursive_ca_rsi/__init__.py": "d3ab70c58efc0aae2e0c5f74ac737c56708cad0080a662520d718e61beb2c380",
+    "FlashRSI/flashrsi/algorithms/recursive_ca_rsi/_diagnostic.py": "c3eb26d164e1cf90c59924bc4f6671621cd51d537b8adb42bfcda9bc149c6583",
+    "FlashRSI/flashrsi/algorithms/recursive_ca_rsi/_mechanism.py": "532e8d26400e2398a469a32e767035c9a4dd8ca8752bd8aa7164db324fd2faad",
+    "FlashRSI/tests/test_diagnosis_guards.py": "b0d9f7631926390a3bdc20a6f767f1cb70b9afb4145a2e798633bad51606c2f9",
+    "FlashRSI/tests/test_miniagent_loop_guard.py": "9eeed1a4ef6dcd4ccd28823b3db6f125f25bc179466ad513a6b6ec12ff39b75d",
+    "FlashRSI/tests/test_rule_integration.py": "eac9457158db635c350f3af8d7d9070d39fac77c0b16b0a0a35cc749d1ed3c6e",
+    "configs/fixed_meta_diagnosis_v2.yaml": "797c99629d5175bc3af504e2f6a5d25688011fa8d87c4dd73546e31572e8f525",
+    "scripts/record_iterations.py": "9a68fa5c52a23588d5a4324a5389e953e8e744dca68b201236cbd838ec949ee6",
+    "scripts/review_diagnosis_selection.py": "a59bd1e33470ca5e455ff426ab624234aef4c77e6b1cb1652fec3d4040711aed",
+    "scripts/run_fixed_meta_case.py": "eeab662e061e919292c546c673d91770e70d0afc90b46fd5dbd5cf6b0ef04100"
+  }
+}

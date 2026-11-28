@@ -45,6 +45,12 @@ class MiniAgent(Agent):
                 "workspace_dir": str(self.files_dir),
                 "runs_root": str(root / "runs"),
             }
+            if config.get("tool_repeat_limit"):
+                request["tool_repeat_limit"] = config["tool_repeat_limit"]
+            if config.get("input_char_limit"):
+                request["input_char_limit"] = config["input_char_limit"]
+            if config.get("_diagnosis_tool_free"):
+                request["allow_tools"] = False
             if config.get("_worker_system_prompt"):
                 request["system_prompt_append"] = config["_worker_system_prompt"]
             if working_dir is not None:
@@ -94,6 +100,8 @@ class MiniAgent(Agent):
                 usage={
                     "model_calls": result["usage"],
                     "turns": result["turns"],
+                    "termination_reason": result.get("termination_reason"),
+                    "tool_loop_guard": result.get("tool_loop_guard"),
                     "rule_replays": [
                         {"snapshot_id": self.snapshot.id, **replay}
                         for replay in result.get("rule_replays", [])

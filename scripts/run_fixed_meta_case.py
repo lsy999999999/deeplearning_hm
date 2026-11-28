@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 from run_experiment import (
@@ -48,7 +49,7 @@ async def run(args, values):
     algorithm = await runner._prepare(config)
     old_ids, old_hashes = set(), set()
     paths = list((ROOT / "runs").glob("**/trajectories/*.json"))
-    paths += list((ROOT / "results").glob("*.json"))
+    paths += list((ROOT / "results").rglob("*.json"))
     for path in paths:
         identities(json.loads(path.read_text()), old_ids, old_hashes)
     splits = {}
@@ -85,12 +86,14 @@ async def run(args, values):
         "scope": "one consecutive natural candidate; unsupported diagnosis remains a result",
         "test_feedback_to_repair": False,
     }
-    destination = ROOT / "results/fixed-meta-diagnosis-20261128-plan.json"
+    destination = args.plan.resolve()
     if destination.exists():
         raise ValueError(
             "Plan already frozen; use a distinct experiment before rerunning"
         )
-    destination.write_text(json.dumps(plan, indent=2) + "\n")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.open("x") as stream:
+        stream.write(json.dumps(plan, indent=2) + "\n")
     print(
         "Frozen disjoint task IDs and content hashes; starting native experiment",
         flush=True,
@@ -104,7 +107,14 @@ async def run(args, values):
 
 
 if __name__ == "__main__":
-    args = build_parser().parse_args()
+    parser = build_parser()
+    parser.add_argument(
+        "--plan",
+        type=Path,
+        default=ROOT / "results/fixed-meta-diagnosis-20261128-plan.json",
+        help="A new frozen plan path; an existing plan is never overwritten",
+    )
+    args = parser.parse_args()
     values = settings(args.env)
     try:
         asyncio.run(run(args, values))

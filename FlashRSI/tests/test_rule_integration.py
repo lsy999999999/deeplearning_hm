@@ -113,6 +113,16 @@ class Meta(Agent):
                                 "evidence_task_ids": ["train-county"],
                                 "repair": "Keep meaningful comma qualifiers",
                                 "verification": "Disable comma on frozen county input",
+                                "observations": [
+                                    {
+                                        "task_id": "train-county",
+                                        "snapshot_id": evidence[
+                                            "candidate_snapshot_id"
+                                        ],
+                                        "output": case["observed_output"],
+                                    }
+                                ],
+                                "intervention_indices": [0],
                             }
                         ],
                         "interventions": [
@@ -121,6 +131,7 @@ class Meta(Agent):
                                 "disable": ["comma"],
                                 "predicted_output": case["answer"],
                                 "claim": "Comma truncates county name",
+                                "falsified_if": "Disabling does not restore the full county name",
                             }
                         ],
                     }
@@ -209,6 +220,7 @@ def test_interventions_reach_repair_and_keep_version_code_reason_links(tmp_path)
         assert change["parent_id"] in journal and change["candidate_id"] in journal
         assert change["changes"][0]["reason"] in journal
     assert "规则干预执行证据" in journal
+    assert "规则案例选择与覆盖" in journal and "修复前证据检查" in journal
     # Rejected intermediate FAULT remains available even after a repair wins.
     faulty = records(algorithm, "code_change")[0]["candidate_id"]
     assert (algorithm._run_dir / "snapshots" / f"{faulty}.json").exists()

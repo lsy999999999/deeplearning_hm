@@ -423,3 +423,9 @@ FlashRSI 保留上游 Apache-2.0 许可证，历史修改补丁见
 ### 持续机器迭代记录
 
 [逐次修改与验证日志](results/RSI_ITERATIONS.md) · [记录方式与规则验证接入](docs/RSI_RECORDING_GUIDE.md) · [保留的原演示资料](docs/demo_archive/README.md)。新运行自动记录每个文件的实际差异、机器理由、版本和采用决定；新规则审计配置独立保存，旧示例与首轮结果不回写。
+
+### 2026-11-28：修复自然诊断案例暴露的流程问题
+
+[本次修改、下一步计划与执行命令](docs/diagnosis-guards-v2.zh-CN.md) · [新独立配置](configs/fixed_meta_diagnosis_v2.yaml)。加入学习案例分层选择、候选事实绑定、可执行预测及修复前证据检查；无代码改动跳过复评；限制 Worker 重复工具调用、轮数和输入字符量。新增零模型调用的原始学习记录复核入口，日志继续追加选择与门槛决定。
+
+本次是框架维护和离线程序验证，没有开展新的真实模型实验；[首个自然失败案例](results/fixed-meta-diagnosis-20261128/FINDINGS_CN.md) 和原演示保留，不改写为成功。软件验证见 [diagnosis-guard-validation.json](results/local_validation/diagnosis-guard-validation.json)。
