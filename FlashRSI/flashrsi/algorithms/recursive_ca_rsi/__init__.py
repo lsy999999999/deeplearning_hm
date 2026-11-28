@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 
 from flashrsi.algorithms.ca_rsi import CARSI
 from flashrsi.algorithms.meta_harness._journal import REASON_INSTRUCTION
-from flashrsi.algorithms.recursive_ca_rsi import _mechanism
+from flashrsi.algorithms.recursive_ca_rsi import _diagnostic, _mechanism
 from flashrsi.core import Benchmark
 from flashrsi.core.snapshot import discard_runtime_files
 
@@ -50,6 +50,10 @@ class RecursiveCARSI(CARSI):
         "meta_self_update": True,
         "rule_verification": False,
         "max_rule_cases": 8,
+        "diagnosis_max_chars": 120000,
+        "repair_max_turns": 12,
+        "worker_repeat_limit": 3,
+        "worker_input_char_limit": 120000,
         "max_meta_edit_units": 3,
         "meta_repeats": 2,
         "meta_train_tasks_per_step": 2,
@@ -60,6 +64,10 @@ class RecursiveCARSI(CARSI):
         "meta_self_update": bool,
         "rule_verification": bool,
         "max_rule_cases": (int, 1),
+        "diagnosis_max_chars": (int, 1),
+        "repair_max_turns": (int, 1),
+        "worker_repeat_limit": (int, 2),
+        "worker_input_char_limit": (int, 1),
         "max_meta_edit_units": (int, 1),
         "meta_repeats": (int, 1),
         "meta_train_tasks_per_step": (int, 1),
@@ -122,6 +130,14 @@ class RecursiveCARSI(CARSI):
                 "meta_probe_dev_ids": [t.task_id for t in self._probe_dev],
                 "meta_repeats": self.config.meta_repeats,
                 "meta_self_update": self.config.meta_self_update,
+                "task_worker_limits": {
+                    "diagnosis_turns": 1,
+                    "diagnosis_tools": False,
+                    "edit_turn_cap": self.config.repair_max_turns,
+                    "repeat_limit": self.config.worker_repeat_limit,
+                    "input_character_limit": self.config.worker_input_char_limit,
+                    "scope": "task_proposal_diagnosis_repair_only",
+                },
                 "test_used_for_selection": False,
                 "scope": "adaptive_development_validation_not_final_efficacy",
             },
@@ -135,6 +151,8 @@ class RecursiveCARSI(CARSI):
         options["history_labels"] = frozenset(options.get("history_labels", ())) | {
             "task_feedback",
             "rule_intervention",
+            "rule_case_selection",
+            "repair_gate",
         }
         options["records_description"] = (
             "training/Worker traces and consumed task_feedback only. Consumed audits "
@@ -150,7 +168,8 @@ class RecursiveCARSI(CARSI):
                 "Each Rule(id, pure_function) takes (answer, evidence) and returns a string; "
                 "no model calls or I/O. Keep the unmodified original examples. "
             )
-        candidate = await super()._propose(seed, versions, step, **options)
+        with self._worker_limits():
+            candidate = await super()._propose(seed, versions, step, **options)
         if candidate is None or not self.config.repair_attempts:
             return candidate
         if len(seed.changed_paths(candidate)) > self.config.max_edit_units:
@@ -162,11 +181,20 @@ class RecursiveCARSI(CARSI):
             return candidate
         for attempt in range(self.config.repair_attempts):
             rule_cases, rule_skipped = (
-                _mechanism.collect_cases(candidate, current, self.config.max_rule_cases)
+                _mechanism.collect_cases(
+                    candidate,
+                    current,
+                    self.config.max_rule_cases,
+                    baseline=baseline,
+                    primary_metric=self.benchmark.primary_metric,
+                )
                 if self.config.rule_verification
                 else ([], [])
             )
             evidence = {
+                "strict_rule_diagnosis": self.config.rule_verification,
+                "baseline_snapshot_id": seed.id,
+                "candidate_snapshot_id": candidate.id,
                 "rule_cases": _mechanism.visible_cases(rule_cases),
                 "rule_case_skips": rule_skipped,
                 "changed_paths": seed.changed_paths(candidate),
@@ -180,14 +208,29 @@ class RecursiveCARSI(CARSI):
                     for path, text in self._read_text(seed).items()
                     if path in seed.changed_paths(candidate)
                 },
-                "before": [self._trajectory_evidence(t) for t in baseline],
-                "after": [self._trajectory_evidence(t) for t in current],
+                "before": self._diagnostic_rows(baseline, include_task=False),
+                "after": self._diagnostic_rows(current, include_task=True),
                 "preflight_problem": self._variant_problem(candidate),
                 "previous_audit_feedback": [
                     {key: value for key, value in item.items() if key != "evaluations"}
                     for item in self._task_feedback
                 ],
             }
+            self._record(
+                "rule_case_selection",
+                {
+                    "step": step,
+                    "attempt": attempt,
+                    "snapshot_id": candidate.id,
+                    "policy": _mechanism.CASE_SELECTION,
+                    "budget": self.config.max_rule_cases,
+                    "selected": [
+                        {"task_id": c["task_id"], **c["selection"]} for c in rule_cases
+                    ],
+                    "skipped": rule_skipped,
+                    "scope": "learning_only_not_random_population_sample",
+                },
+            )
             prompt = (
                 "[Recursive-CA-RSI: diagnose]\nDiagnose this Task harness proposal "
                 "using ONLY the supplied training and consumed audit evidence. Separate runtime faults, "
@@ -202,10 +245,21 @@ class RecursiveCARSI(CARSI):
                 "These structured requests will be executed AFTER your prediction. "
                 "Rules may be useful on some inputs and harmful on others. "
                 "A score difference alone does not establish causation.\n"
+                + (
+                    _diagnostic.STRICT_INSTRUCTION
+                    if self.config.rule_verification
+                    else ""
+                )
+                + "\n"
                 + json.dumps(evidence, ensure_ascii=False)
             )
             try:
-                diagnosis = self._diagnosis(await self.worker.ask(prompt), evidence)
+                if len(prompt) > self.config.diagnosis_max_chars:
+                    raise ValueError(
+                        "diagnosis evidence exceeds character budget; not silently truncated"
+                    )
+                with self._worker_limits(diagnosing=True):
+                    diagnosis = self._diagnosis(await self.worker.ask(prompt), evidence)
             except (RuntimeError, ValueError) as error:
                 self._record(
                     "diagnosis",
@@ -214,6 +268,17 @@ class RecursiveCARSI(CARSI):
                         "attempt": attempt,
                         "status": "unavailable",
                         "problem": str(error),
+                    },
+                )
+                self._record(
+                    "repair",
+                    {
+                        "step": step,
+                        "attempt": attempt,
+                        "before_id": candidate.id,
+                        "accepted_on_train": False,
+                        "status": "not_attempted",
+                        "problem": "diagnosis invalid or unavailable",
                     },
                 )
                 break
@@ -245,14 +310,68 @@ class RecursiveCARSI(CARSI):
                         **rule_evidence,
                     },
                 )
-                diagnosis["executed_rule_interventions"] = rule_evidence
+                diagnosis["executed_rule_interventions"] = _diagnostic.repair_summary(
+                    rule_evidence
+                )
             if not diagnosis["issues"]:
+                self._record(
+                    "repair",
+                    {
+                        "step": step,
+                        "attempt": attempt,
+                        "before_id": candidate.id,
+                        "accepted_on_train": False,
+                        "status": "not_needed",
+                        "problem": None,
+                    },
+                )
                 break
+            supported, rejected = _diagnostic.repair_gate(
+                diagnosis, evidence, rule_evidence
+            )
+            self._record(
+                "repair_gate",
+                {
+                    "step": step,
+                    "attempt": attempt,
+                    "snapshot_id": candidate.id,
+                    "permitted": bool(supported),
+                    "supported_issues": len(supported),
+                    "rejected": rejected,
+                    "scope": "local_rule_evidence_only",
+                },
+            )
+            if not supported:
+                self._record(
+                    "repair",
+                    {
+                        "step": step,
+                        "attempt": attempt,
+                        "before_id": candidate.id,
+                        "accepted_on_train": False,
+                        "status": "not_attempted",
+                        "problem": "no verified local fault; preserve candidate for ordinary audit",
+                    },
+                )
+                break
+            diagnosis["issues"] = supported
+            diagnosis["current_observations"] = [
+                {
+                    "task_id": row["task"]["task_id"],
+                    "snapshot_id": candidate.id,
+                    "output": row["output"],
+                    "metrics": row["metrics"],
+                }
+                for row in evidence["after"]
+            ]
             self._save_snapshot(candidate)
             try:
-                with candidate.check_out(
-                    working_dir=self._run_dir / "working"
-                ) as directory:
+                with (
+                    self._worker_limits(),
+                    candidate.check_out(
+                        working_dir=self._run_dir / "working"
+                    ) as directory,
+                ):
                     explanation = await self.worker.edit(
                         directory,
                         "[Recursive-CA-RSI: repair]\nImplement a minimal Task harness "
@@ -260,6 +379,9 @@ class RecursiveCARSI(CARSI):
                         "preserve useful changes, do not hard-code answers or task IDs. "
                         f"Change at most {self.config.max_edit_units} files relative to "
                         "the original parent. Do not access audit/test data or graders.\n"
+                        "Use read_file/write_file for the focused edit. Stop if a check "
+                        "repeats without new information. If no justified edit exists, "
+                        "leave files unchanged and say so.\n"
                         + json.dumps(diagnosis, ensure_ascii=False)
                         + REASON_INSTRUCTION,
                     )
@@ -274,6 +396,23 @@ class RecursiveCARSI(CARSI):
                     subject="Task",
                     attempt=attempt,
                 )
+                if repaired.id == candidate.id:
+                    self._record(
+                        "repair",
+                        {
+                            "step": step,
+                            "attempt": attempt,
+                            "before_id": candidate.id,
+                            "after_id": repaired.id,
+                            "accepted_on_train": False,
+                            "status": "no_code_change",
+                            "problem": "repair made no code change",
+                            "before_score": current.score,
+                            "after_score": None,
+                            "evaluation_skipped": True,
+                        },
+                    )
+                    break
                 problem = self._variant_problem(repaired)
                 if len(seed.changed_paths(repaired)) > self.config.max_edit_units:
                     problem = "repair exceeded edit budget"
@@ -354,6 +493,54 @@ class RecursiveCARSI(CARSI):
                 break
         return candidate
 
+    def _diagnostic_rows(self, trajectories, *, include_task):
+        rows = []
+        for trajectory in trajectories:
+            row = self._trajectory_evidence(trajectory)
+            # Full traces remain in native evaluation records. Do not repeat
+            # all message/usage/transition trees in the diagnosis prompt.
+            rows.append(
+                {
+                    key: value
+                    for key, value in row.items()
+                    if key not in {"messages", "usage", "task"}
+                }
+                | {
+                    "task": row["task"]
+                    if include_task
+                    else {"task_id": trajectory.task.task_id}
+                }
+            )
+        return rows
+
+    @contextmanager
+    def _worker_limits(self, *, diagnosing=False):
+        """Bound sequential Worker calls, then restore caller configuration."""
+        config = self.worker.config
+        keys = (
+            "max_turns",
+            "tool_repeat_limit",
+            "input_char_limit",
+            "_diagnosis_tool_free",
+        )
+        previous = {key: config[key] for key in keys if key in config}
+        config["max_turns"] = (
+            1
+            if diagnosing
+            else min(config.get("max_turns", 10), self.config.repair_max_turns)
+        )
+        config["tool_repeat_limit"] = self.config.worker_repeat_limit
+        config["input_char_limit"] = self.config.worker_input_char_limit
+        config["_diagnosis_tool_free"] = diagnosing
+        try:
+            yield
+        finally:
+            for key in keys:
+                if key in previous:
+                    config[key] = previous[key]
+                else:
+                    config.pop(key, None)
+
     @staticmethod
     def _diagnosis(text, evidence):
         text = text.strip()
@@ -406,6 +593,8 @@ class RecursiveCARSI(CARSI):
                 or not isinstance(request.get("claim"), str)
             ):
                 raise ValueError("Invalid structured rule intervention")
+        if evidence.get("strict_rule_diagnosis"):
+            _diagnostic.validate_observations(result["issues"], evidence, interventions)
         # The model's explanation remains a hypothesis. Controller results are
         # attached later; merely accepting this JSON never verifies its claim.
         return {
@@ -466,6 +655,8 @@ class RecursiveCARSI(CARSI):
                             "repair_candidate",
                             "repair_check",
                             "rule_intervention",
+                            "rule_case_selection",
+                            "repair_gate",
                             "task_feedback",
                         }:
                             (visible / record.name).write_bytes(record.read_bytes())

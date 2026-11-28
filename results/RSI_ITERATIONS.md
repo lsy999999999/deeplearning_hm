@@ -25264,3 +25264,14 @@ Training evidence shows the dominant answer-processing failure is formatting/spa
   "supported_harmful_requests": []
 }
 ```
+
+
+## 2026-11-28 · 框架维护：自然诊断失败后的程序修复
+
+本条为用户授权的 Codex 框架维护，不是 Meta 在 RSI 运行中自行产生的修改，不计入机器改进成功数。首个自然失败案例、原始候选、报告和既有日志条目均保留。
+
+修改与原因逐项对应见 [本次维护与执行指南](../docs/diagnosis-guards-v2.zh-CN.md)：修复前四题截断造成的案例覆盖问题；绑定候选版本和实际输出；要求可执行预测及局部有害证据后再修复；无代码改动不复评；限制重复检查、Worker轮数和输入长度；追加选择与修复前检查到后续机器迭代日志。
+
+软件检查：111项相关测试通过，228份原演示资料哈希不变，原自然实验报告/证据/配置不变。新增下一轮独立配置和零调用旧学习记录复核入口。本次0次模型调用；尚未复核旧实验完整八题原始轨迹，也未执行新配置的真实模型实验，不据此声称定位或修复收益。
+
+验证记录：[diagnosis-guard-validation.json](local_validation/diagnosis-guard-validation.json)。下一步先在原始轨迹所在机器进行零调用复核，再按指南冻结新数据、运行一个固定Meta候选，保留无需修复、拒绝和失败结果。

@@ -110,6 +110,14 @@
 
 [历史三组一致性检查](results/three-way-hotpotqa-comparison.json) · [四轮记录](results/four-round-hotpotqa.json) · [递归与 base 对照](results/recursive-vs-base-20261128.json) · [未启用修改检查](results/recursive-vs-base-20261128-activation-check.json)
 
+### 2.5 后续框架修复与本轮结果的版本边界
+
+远程提交 `86d935e` 增加了学习案例分层选择、候选事实绑定、可执行预测和修复前证据门槛；无代码变化时跳过复评，并限制 Worker 重复调用、轮数和输入长度。这属于人工维护框架，不计作机器自改进成果。[修改与执行指南](docs/diagnosis-guards-v2.zh-CN.md) · [原生新配置](configs/fixed_meta_diagnosis_v2.yaml) · [离线验证](results/local_validation/diagnosis-guard-validation.json)
+
+上述代码在本轮实验结束后合入。本轮 10 候选实验冻结于 `3ec2cf8` 加独立驱动脚本，具体哈希见计划；其结果不能冒充 `86d935e` 原生流程的新实测。两者都保留，历史失败不改写为成功。
+
+合并后完成零 API 的历史记录复核：新选择策略覆盖了原先漏掉的第 6 题，旧诊断因缺少候选事实绑定被新门槛拒绝。该复核未执行候选代码，也未做新模型评测，属于事后软件行为验证。[复核证据](results/local_validation/diagnosis-v2-retrospective-selection.json)
+
 ## 3. 从局部案例走向真实 RSI，还差三步
 
 **第一步，抓到真实自修改造成的错误。** 让 RSI 连续产生修改，保存修改前后代码、执行过程和逐题结果。面对事先不知道的新问题，系统需要主动提出可疑修改。已有详细局部验证主要围绕已知问题设计，首个自然案例也没有成功完成这条链。

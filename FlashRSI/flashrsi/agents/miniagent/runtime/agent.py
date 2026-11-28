@@ -30,6 +30,7 @@ from typing import Any
 from . import llm, reader
 from . import web_config as web_settings
 from . import workspace as ws_mod
+from .loop_guard import ToolLoopGuard
 from .tool_result import ToolResult
 from .tools import web_search_structured
 from .trace import TraceWriter
@@ -880,8 +881,13 @@ async def run(
     web_config: dict | None = None,
     debug_llm_io: bool = False,
     system_prompt_append: str = "",
+    allow_tools: bool = True,
+    tool_repeat_limit: int = 0,
+    input_char_limit: int = 0,
 ) -> dict[str, Any]:
     llm.configure(llm_config or {})
+    if type(input_char_limit) is not int or input_char_limit < 0:
+        raise ValueError("input_char_limit must be a nonnegative integer")
     web_settings.configure(web_config or {})
     runs_root = Path(runs_root)
     runs_root.mkdir(parents=True, exist_ok=True)
@@ -925,6 +931,7 @@ async def run(
         max_turns=max_turns,
     )
     stop_reason = "max_turns"
+    loop_guard = ToolLoopGuard(tool_repeat_limit, ctx.working_dir)
     answer = ""
 
     _log_dir = trace.dir / "log" if debug_llm_io else None
@@ -1018,10 +1025,20 @@ async def run(
             _req_file = _log_dir / f"turn_{turn:03d}_request.json"
             trace.write_json(_req_file, _req_log)
 
-        is_last_turn = turn == max_turns
+        is_last_turn = turn == max_turns or not allow_tools
         _tc = "none" if is_last_turn else "auto"
         _tools_resp = None if is_last_turn else responses_tools
         _tools_chat = None if is_last_turn else bundle.tool_schemas
+
+        request_chars = len(json.dumps(
+            [bundle.system_prompt, response_history + response_input, _tools_resp]
+            if use_responses_api else [messages, _tools_chat],
+            ensure_ascii=False, default=str,
+        ))
+        if input_char_limit and request_chars > input_char_limit:
+            stop_reason = "llm_error: input character budget exceeded"
+            trace.event("input_budget_stopped", turn=turn, characters=request_chars, limit=input_char_limit)
+            break
 
         _llm_last_err: Exception | None = None
         for _attempt in range(1, llm.LLM_MAX_RETRIES + 1):
@@ -1184,6 +1201,11 @@ async def run(
             n_tool_calls=len(tc_list),
         )
 
+        if tc_list and not allow_tools:
+            stop_reason = "llm_error: tools are disabled for this diagnosis"
+            trace.event("tool_call_rejected", turn=turn, reason=stop_reason)
+            break
+
         if not tc_list:
             if not content.strip():
                 stop_reason = "llm_error: model returned no final answer text"
@@ -1218,9 +1240,14 @@ async def run(
                 args = {}
             before_tool_seq = ctx._tool_seq
             try:
-                result = await _dispatch(name, args, ctx)
+                result = (
+                    "Runtime stopped repetitive tool use; this call was not executed."
+                    if loop_guard.stopped else await _dispatch(name, args, ctx)
+                )
             except Exception as e:
                 result = f"tool error: {e}"
+            if not loop_guard.stopped and loop_guard.observe(name, args, result):
+                trace.event("tool_loop_stopped", turn=turn, **loop_guard.event)
             result_metadata = {}
             if ctx.tool_history and ctx.tool_history[-1].seq > before_tool_seq:
                 result_metadata = copy.deepcopy(ctx.tool_history[-1].result_metadata)
@@ -1274,6 +1301,10 @@ async def run(
 
         if use_responses_api:
             resp_input = tool_outputs + injected_tool_messages
+
+        if loop_guard.stopped:
+            stop_reason = "tool_loop_guard"
+            break
 
         # ── process pending injections from after_tool ──
         if ctx._pending_injections:
@@ -1351,7 +1382,17 @@ async def run(
             "For an editing task, report only changes actually completed; "
             "do not claim unfinished work succeeded. State any uncertainty."
         )
+        forced_chars = len(json.dumps(
+            [bundle.system_prompt, response_history + resp_input, forced_prompt]
+            if use_responses_api else [messages, forced_prompt],
+            ensure_ascii=False, default=str,
+        ))
+        if input_char_limit and forced_chars > input_char_limit:
+            stop_reason = "llm_error: input character budget exceeded before finalization"
+            trace.event("input_budget_stopped", turn=last_turn + 1, characters=forced_chars, limit=input_char_limit)
         for _attempt in range(1, llm.LLM_MAX_RETRIES + 1):
+            if stop_reason.startswith("llm_error"):
+                break
             try:
                 request_started = time.monotonic()
                 if use_responses_api:
@@ -1421,6 +1462,7 @@ async def run(
         if not stop_reason.startswith("llm_error"):
             stop_reason = "llm_error: model returned no final answer text"
 
+    termination_reason = stop_reason
     if not stop_reason.startswith("llm_error"):
         stop_reason = "completed"
 
@@ -1429,6 +1471,8 @@ async def run(
         "question": question,
         "llm_config": llm_config,
         "stop_reason": stop_reason,
+        "termination_reason": termination_reason,
+        "tool_loop_guard": loop_guard.event,
         "turns": last_turn,
         "search_calls": ctx.search_calls,
         "read_calls": ctx.read_calls,

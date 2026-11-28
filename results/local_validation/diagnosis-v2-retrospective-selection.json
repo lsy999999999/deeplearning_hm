@@ -1,0 +1,119 @@
+{
+  "scope": "retrospective_learning_selection_only_not_new_model_experiment",
+  "model_calls": 0,
+  "candidate_code_executed": false,
+  "candidate_snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+  "baseline_snapshot_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef",
+  "policy": "learning-strata-v1: regression, triggered, failure, unchanged; round-robin",
+  "limit": 4,
+  "metric": "exact_match",
+  "selected": [
+    {
+      "task_id": "5abc8507554299700f9d78de",
+      "input_answer": "To be, or not to be",
+      "observed_output": "To be",
+      "policy": "learning-strata-v1: regression, triggered, failure, unchanged; round-robin",
+      "stratum": "triggered",
+      "triggered_rules": [
+        "drop_trailing_clause"
+      ],
+      "observed_regression": false
+    },
+    {
+      "task_id": "5a74397055429974ef308bbe",
+      "input_answer": "Bob Hill",
+      "observed_output": "Bob Hill",
+      "policy": "learning-strata-v1: regression, triggered, failure, unchanged; round-robin",
+      "stratum": "unchanged",
+      "triggered_rules": [],
+      "observed_regression": false
+    },
+    {
+      "task_id": "5abc5955554299114383a118",
+      "input_answer": "Midnight Madness",
+      "observed_output": "Midnight Madness",
+      "policy": "learning-strata-v1: regression, triggered, failure, unchanged; round-robin",
+      "stratum": "unchanged",
+      "triggered_rules": [],
+      "observed_regression": false
+    },
+    {
+      "task_id": "5ab30ebf554299753aec592c",
+      "input_answer": "The Dressmaker",
+      "observed_output": "The Dressmaker",
+      "policy": "learning-strata-v1: regression, triggered, failure, unchanged; round-robin",
+      "stratum": "unchanged",
+      "triggered_rules": [],
+      "observed_regression": false
+    }
+  ],
+  "skipped": [
+    {
+      "task_id": "5ae4f3c455429960a22e0221",
+      "reason": "fixed case budget reached",
+      "selection": {
+        "policy": "learning-strata-v1: regression, triggered, failure, unchanged; round-robin",
+        "stratum": "unchanged",
+        "triggered_rules": [],
+        "observed_regression": false
+      }
+    },
+    {
+      "task_id": "5a77a41a5542997042120ab9",
+      "reason": "fixed case budget reached",
+      "selection": {
+        "policy": "learning-strata-v1: regression, triggered, failure, unchanged; round-robin",
+        "stratum": "unchanged",
+        "triggered_rules": [],
+        "observed_regression": false
+      }
+    },
+    {
+      "task_id": "5adfda5255429942ec259b5e",
+      "reason": "fixed case budget reached",
+      "selection": {
+        "policy": "learning-strata-v1: regression, triggered, failure, unchanged; round-robin",
+        "stratum": "unchanged",
+        "triggered_rules": [],
+        "observed_regression": false
+      }
+    },
+    {
+      "task_id": "5ae763aa5542995703ce8c09",
+      "reason": "fixed case budget reached",
+      "selection": {
+        "policy": "learning-strata-v1: regression, triggered, failure, unchanged; round-robin",
+        "stratum": "unchanged",
+        "triggered_rules": [],
+        "observed_regression": false
+      }
+    }
+  ],
+  "diagnosis_check": {
+    "status": "rejected_by_new_gate",
+    "repair_permitted": false,
+    "reason": "Strict diagnosis needs current candidate observations"
+  },
+  "sources": [
+    {
+      "path": "runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/snapshots/bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b.json",
+      "sha256": "bcbe22713036039b39b668818a67d39b0e6a6aa41177b5a9cffcdab732a26fe1"
+    },
+    {
+      "path": "runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/trajectories/00006-repair_baseline.json",
+      "sha256": "5bd3aab05c9487836eb554c3ba0b9b9835e8595cf32b0ce617516b644d8fca70"
+    },
+    {
+      "path": "runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/trajectories/00007-repair_candidate.json",
+      "sha256": "86747d80c32ecdea911638bb8ecea64324c35c48ed97c3713b772b1f1cf912fd"
+    },
+    {
+      "path": "runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/trajectories/00009-diagnosis.json",
+      "sha256": "0cfeca2c9589e17d5aa90b98bd78cda911001ea9f2a193846e19c28cc865967a"
+    },
+    {
+      "path": "runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/snapshots/11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef.json",
+      "sha256": "bff2ffe335465efdfa53f8f39632da64aaddcfe1ff2f35b57c21e65f1566fcfb"
+    }
+  ]
+}
