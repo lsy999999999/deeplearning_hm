@@ -1,0 +1,60 @@
+{
+  "date": "2026-11-28",
+  "status": "finished",
+  "source_commit": "1ad8a37aaa893d92e5b481a1f97979df3b368ebb",
+  "comparison": "fresh_current_code_meta_harness_vs_recursive_ca_rsi",
+  "initial_snapshot_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+  "historical_initial_snapshot_id": "5634bcac75b89a43fdfb17545882ef3edf8224ccc75ece080725c12139af2e26",
+  "common_settings": {
+    "model": "DeepSeek-V4-Flash",
+    "seed": 43,
+    "rounds": 4,
+    "split_counts": {
+      "train": 8,
+      "dev": 16,
+      "test": 16
+    },
+    "temperature": 1,
+    "reasoning_effort": "none",
+    "thinking": "disabled",
+    "unlimited_output": true,
+    "target_container": "ca-rsi-runtime:local",
+    "worker_execution": "host_python_subprocess",
+    "parallel_runs": true
+  },
+  "configs": [
+    "configs/meta_harness_hotpotqa_20261128.yaml",
+    "configs/recursive_ca_rsi_hotpotqa_20261128.yaml"
+  ],
+  "recursive_data_allocation": {
+    "task_public_train": 4,
+    "meta_reserved_train": 4,
+    "task_audit_dev": 8,
+    "meta_probe_dev": 8,
+    "fresh_task_dev_per_round": 2,
+    "fresh_meta_dev_per_round": 2,
+    "final_test": 16
+  },
+  "protocol_changes": {
+    "meta_train_tasks_per_step": 1,
+    "reason": "Preserve yesterday train/dev/test=8/16/16 with four rounds; default two reserved train tasks per round would exhaust training."
+  },
+  "equal_token_budget": false,
+  "test_used_for_selection": false,
+  "docker_image_id": "sha256:a94d9ab5034de37e85d984716ecced91c99abe492d2ae3febc2591f002e72b8a",
+  "python": "3.12.16 (main, Nov 24 2026, 16:50:40) [Clang 23.1.3 ]",
+  "native_runs": {
+    "meta_harness": "runs/study_20261128/meta_harness/seed-43/meta_harness-miniagent-hotpotqa-20261128-163106-609439",
+    "recursive_ca_rsi": "runs/study_20261128/recursive_ca_rsi/seed-43/recursive_ca_rsi-miniagent-hotpotqa-20261128-163113-702609"
+  },
+  "interruption": {
+    "idle_sleep_start": "2026-11-28T16:39:11+08:00",
+    "wake": "2026-11-28T17:08:48+08:00",
+    "base_observed_error": "llm_error: Connection error.",
+    "base_recovery": "scripts/resume_meta_harness.py; reuse three completed steps, retry unfinished fourth step in same run directory",
+    "original_logs_preserved": true,
+    "temporary_idle_sleep_prevention": "caffeinate tied to the recursive experiment process"
+  },
+  "results": "results/recursive-vs-base-20261128.json",
+  "test_tasks_checked_identical": 16
+}

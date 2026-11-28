@@ -1,0 +1,12 @@
+{
+  "selected_snapshot_id": "f9172501c859698a8072b2a67badcdd5a4b50eae031c5fef91db0032e6c2fe03",
+  "same_system_and_skill_prompt": true,
+  "same_extract_prompt": true,
+  "same_tool_schemas": true,
+  "initial_registered_middlewares": [],
+  "selected_registered_middlewares": [],
+  "static_change_paths": [
+    "middleware/answer_normalizer.py"
+  ],
+  "model_calls_for_this_check": 0
+}

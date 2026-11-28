@@ -8,7 +8,7 @@ from html import escape
 def svg_diagram(run):
     """One row per round; the right-hand path tracks retained versions."""
     rounds = run["rounds"]
-    height = 220 + 132 * len(rounds)
+    height = 220 + 132 * len(rounds) + (28 if run.get("meta_updates") else 0)
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="{height}" style="max-width:100%;height:auto" viewBox="0 0 1000 {height}" role="img" aria-labelledby="diagram-title diagram-desc">',
         f'<title id="diagram-title">{escape(run["name"])} 逐轮进化选择</title>',
@@ -57,7 +57,11 @@ def svg_diagram(run):
         if rounds
         else None
     )
-    initial_label = "首轮新题基线" if run.get("method") in {"ca_rsi", "recursive_ca_rsi"} else "开发集基线"
+    initial_label = (
+        "首轮新题基线"
+        if run.get("method") in {"ca_rsi", "recursive_ca_rsi"}
+        else "开发集基线"
+    )
     box(
         520,
         85,
@@ -119,14 +123,41 @@ def svg_diagram(run):
         )
         parts.append(f'<path d="M745 {previous_bottom}V{y - 5}" class="link"/>')
         parts.append(f'<path d="M424 {y + 45}H510" class="link"/>')
+        meta = next(
+            (m for m in run.get("meta_updates", []) if m.get("step") == round_["step"]),
+            None,
+        )
+        if meta is not None:
+            picked = (
+                meta.get("worker_candidate_id")
+                if meta["accepted"]
+                else meta.get("worker_before_id")
+            )
+            gain = meta.get("mean_paired_gain")
+            gain_label = (
+                f"Δ={gain:+.3f}"
+                if gain is not None
+                else "验证不完整"
+                if meta.get("trials")
+                else "未进入验证"
+            )
+            text(
+                24,
+                y + 112,
+                f"Meta 更新：{'采用' if meta['accepted'] else '保留'} {(picked or '未记录')[:8]} · {gain_label}",
+                "small",
+            )
         current, previous_bottom = selected_id, y + 90
     footer = height - 23
     final = run.get("final_id") or "未记录"
     test = f"{run['test_score']:.2%}" if run["test_score"] is not None else "未记录"
+    meta_final = (
+        f" · Meta {run['final_worker_id'][:8]}" if run.get("final_worker_id") else ""
+    )
     text(
         24,
         footer,
-        f"最终版本 {final[:10]} · 最终测试 {test} · {run.get('test_tasks') or 0} 题（不参与选择）",
+        f"最终版本 {final[:10]} · 最终测试 {test} · {run.get('test_tasks') or 0} 题（不参与选择）{meta_final}",
         "small",
     )
     parts.append("</svg>")

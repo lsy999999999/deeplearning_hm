@@ -122,6 +122,25 @@ Meta-Harness 不使用 `MAX_EDIT_UNITS` 和 `MAX_TASK_REGRESSIONS`，不会因�
 
 ### 历史配置与正式规模模板
 
+2026-11-28 的同环境递归模式对照使用单独的日期配置，在仓库根目录运行：
+
+```bash
+.venv/bin/python scripts/run_experiment.py --config configs/meta_harness_hotpotqa_20261128.yaml
+.venv/bin/python scripts/run_experiment.py --config configs/recursive_ca_rsi_hotpotqa_20261128.yaml
+```
+
+两份配置已包含 4 轮、同一模型与镜像；递归模式每轮预留 1 道 Meta 训练题，以兼容总训练题数 8。
+这两个命令会分别产生真实模型调用，既有实测结果见 README 第 3.6 节。
+如果原版 Meta-Harness 在最终选择前中断，可保留原运行目录并恢复未完成步骤：
+
+```bash
+.venv/bin/python scripts/resume_meta_harness.py runs/对应实验/未完成的原生运行目录
+```
+
+恢复入口只支持原版 Meta-Harness，要求目标、Worker、数据配置和初始源码与原运行一致。
+它复用已完成轮次、候选和分数，在同一目录追加记录并继续调用原生提议及严格历史最高分选择规则。
+失败轨迹保留并计入成本；已有最终结果时拒绝再次执行，避免重复测试。
+
 | 配置 | train / dev / test | 改进轮数 | 用途 |
 | --- | --- | --- | --- |
 | `hotpotqa_smoke.yaml` | 2 / 4 / 4 | 1 | 小规模完整流程排错 |

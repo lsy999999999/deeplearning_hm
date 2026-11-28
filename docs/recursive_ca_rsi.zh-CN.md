@@ -69,7 +69,11 @@ ALGORITHMS=recursive_ca_rsi ROUNDS=2 TRAIN_SIZE=12 DEV_SIZE=32 TEST_SIZE=32 \
 bash scripts/run_study.sh --dry-run
 ```
 
-去掉 `--dry-run` 才会调用真实模型。新模式的两个 Agent 使用相同配置的调用轮数和超时上限进行 Meta 对照，但实际消耗的 token 可以不同；成本需要从真实日志报告。附带配置用于小规模验证，未运行真实模型性能实验。
+去掉 `--dry-run` 才会调用真实模型。新模式的两个 Agent 使用相同配置的调用轮数和超时上限进行 Meta 对照，但实际消耗的 token 可以不同；成本需要从真实日志报告。
+本文件默认的 12/32/32、2 轮配置尚未运行真实模型性能实验。
+2026-11-28 已按昨日 8/16/16、4 轮设置完成一次真实试运行，配置为
+[`recursive_ca_rsi_hotpotqa_20261128.yaml`](../configs/recursive_ca_rsi_hotpotqa_20261128.yaml)，
+与新跑 base 的结果和限制见 README 第 3.6 节。本轮 Meta 接纳为 0，最终新增的 Task 中间件未注册，尚无有效递归改进收益证据。
 
 | 参数 | 默认值 | 含义 |
 | --- | ---: | --- |

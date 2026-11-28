@@ -1,0 +1,1288 @@
+{
+  "date": "2026-11-28",
+  "scope": "single_seed_four_round_independent_end_to_end_runs_with_documented_interruption_not_equal_budget",
+  "source_commit": "1ad8a37aaa893d92e5b481a1f97979df3b368ebb",
+  "plan": "results/recursive-vs-base-20261128-plan.json",
+  "activation_check": "results/recursive-vs-base-20261128-activation-check.json",
+  "checks": {
+    "same_initial_snapshot": true,
+    "same_target_config": true,
+    "same_test_task_contents": true,
+    "same_recorded_system_user_prefix_on_test": true,
+    "test_used_for_candidate_selection": false,
+    "equal_token_budget": false,
+    "new_independent_test_set": false
+  },
+  "runs": [
+    {
+      "method": "meta_harness",
+      "run_dir": "runs/study_20261128/meta_harness/seed-43/meta_harness-miniagent-hotpotqa-20261128-163106-609439",
+      "source_initial_snapshot": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+      "final_task_snapshot": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+      "final_worker_snapshot": null,
+      "final_changed_paths": [],
+      "configured_steps": 4,
+      "recorded_steps": 4,
+      "test": {
+        "tasks": 16,
+        "exact_match": 0.5,
+        "f1": 0.6773809523809524
+      },
+      "rounds": [
+        {
+          "step": 0,
+          "status": "admitted",
+          "problem": null,
+          "baseline_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "candidate_id": "941291217090408839f99961017eb8b2fd3e663b318a58f75d388d54cc50a226",
+          "selected_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "selected_paths": [],
+          "retained_score": null,
+          "retained_count": null,
+          "retention_count": null,
+          "retention": [],
+          "improved_best": false,
+          "changed_paths": [
+            "agent.yaml",
+            "middleware/answer_shape.py",
+            "prompts/extract.md",
+            "prompts/system.md",
+            "skills/main.md"
+          ],
+          "variants": [
+            {
+              "id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+              "paths": [],
+              "score": 0.5625,
+              "count": 16,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0
+            },
+            {
+              "id": "941291217090408839f99961017eb8b2fd3e663b318a58f75d388d54cc50a226",
+              "paths": [
+                "agent.yaml",
+                "middleware/answer_shape.py",
+                "prompts/extract.md",
+                "prompts/system.md",
+                "skills/main.md"
+              ],
+              "score": 0.5,
+              "count": 16,
+              "improved": 0,
+              "regressions": 1,
+              "errors": 0
+            }
+          ]
+        },
+        {
+          "step": 1,
+          "status": "admitted",
+          "problem": null,
+          "baseline_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "candidate_id": "1125e2bdfaa7cb67eb5f477a196ad3c0aaeed25bd878a3abaad524faff582be9",
+          "selected_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "selected_paths": [],
+          "retained_score": null,
+          "retained_count": null,
+          "retention_count": null,
+          "retention": [],
+          "improved_best": false,
+          "changed_paths": [
+            "runtime/answer_shape.py",
+            "runtime/evidence.py",
+            "runtime/evidence_flow.py"
+          ],
+          "variants": [
+            {
+              "id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+              "paths": [],
+              "score": 0.5625,
+              "count": 16,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0
+            },
+            {
+              "id": "1125e2bdfaa7cb67eb5f477a196ad3c0aaeed25bd878a3abaad524faff582be9",
+              "paths": [
+                "runtime/answer_shape.py",
+                "runtime/evidence.py",
+                "runtime/evidence_flow.py"
+              ],
+              "score": 0.4375,
+              "count": 16,
+              "improved": 0,
+              "regressions": 2,
+              "errors": 0
+            }
+          ]
+        },
+        {
+          "step": 2,
+          "status": "declined",
+          "problem": "path must match exactly one component: answer_flow.py",
+          "baseline_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "candidate_id": null,
+          "selected_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "selected_paths": [],
+          "retained_score": 0.5625,
+          "retained_count": 16,
+          "retention_count": null,
+          "retention": [],
+          "improved_best": null,
+          "changed_paths": [],
+          "variants": []
+        },
+        {
+          "step": 3,
+          "status": "declined",
+          "problem": "the harness was left unchanged",
+          "baseline_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "candidate_id": null,
+          "selected_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "selected_paths": [],
+          "retained_score": 0.5625,
+          "retained_count": 16,
+          "retention_count": null,
+          "retention": [],
+          "improved_best": null,
+          "changed_paths": [],
+          "variants": []
+        }
+      ],
+      "diagnoses": [],
+      "repairs": [],
+      "meta_updates": [],
+      "worker_failures": [
+        {
+          "record": "00011-worker.json",
+          "error": "llm_error: Connection error."
+        }
+      ],
+      "target_rule_replay_events": 0,
+      "final_test_tool_calls": {},
+      "usage": {
+        "roles": {
+          "target": {
+            "finished": {
+              "input_tokens": 160908,
+              "output_tokens": 340,
+              "cache_read_tokens": 124529,
+              "cache_write_tokens": 0,
+              "usage_entries": 64,
+              "usage_entries_missing_tokens": 0,
+              "sdk_cost_entries": 0,
+              "duplicate_usage_entries": 0,
+              "records": 64,
+              "finished_records": 64,
+              "failed_records": 0,
+              "sdk_cost_usd": null,
+              "cost_bases": []
+            }
+          },
+          "worker": {
+            "finished": {
+              "input_tokens": 4701869,
+              "output_tokens": 40262,
+              "cache_read_tokens": 4235264,
+              "cache_write_tokens": 0,
+              "usage_entries": 124,
+              "usage_entries_missing_tokens": 0,
+              "sdk_cost_entries": 0,
+              "duplicate_usage_entries": 0,
+              "records": 4,
+              "finished_records": 4,
+              "failed_records": 0,
+              "sdk_cost_usd": null,
+              "cost_bases": []
+            },
+            "failed": {
+              "input_tokens": 48503,
+              "output_tokens": 951,
+              "cache_read_tokens": 38016,
+              "cache_write_tokens": 0,
+              "usage_entries": 7,
+              "usage_entries_missing_tokens": 0,
+              "sdk_cost_entries": 0,
+              "duplicate_usage_entries": 0,
+              "records": 1,
+              "finished_records": 0,
+              "failed_records": 1,
+              "sdk_cost_usd": null,
+              "cost_bases": []
+            }
+          }
+        },
+        "total": {
+          "input_tokens": 4911280,
+          "output_tokens": 41553,
+          "cache_read_tokens": 4397809,
+          "cache_write_tokens": 0,
+          "usage_entries": 195,
+          "usage_entries_missing_tokens": 0,
+          "sdk_cost_entries": 0,
+          "duplicate_usage_entries": 0,
+          "records": 69,
+          "finished_records": 68,
+          "failed_records": 1,
+          "sdk_cost_usd": null,
+          "cost_bases": []
+        },
+        "gateway_actual_cost_usd": null,
+        "scope": "saved_trajectories"
+      },
+      "execution": {
+        "elapsed_seconds": null,
+        "recovery_elapsed_seconds": 113.14797762501985,
+        "wall_elapsed_seconds": 2934.4606347084045,
+        "scope": "original monotonic duration unavailable; wall time includes interruption/sleep",
+        "python": "3.12.16 (main, Nov 24 2026, 16:50:40) [Clang 23.1.3 ]"
+      },
+      "resumed_after_error": true,
+      "wall_elapsed_seconds": 2934.460613965988,
+      "parameters": {
+        "agent": {
+          "name": "miniagent",
+          "llm": {
+            "model_name": "DeepSeek-V4-Flash",
+            "api_key": null,
+            "base_url": "https://token.matpool.com/v1",
+            "llm_max_retries": 1,
+            "extra_body": {
+              "temperature": 1.0,
+              "thinking": {
+                "type": "disabled"
+              }
+            },
+            "unlimited_output": true,
+            "reasoning_effort": "none"
+          },
+          "max_turns": 6,
+          "timeout": 300,
+          "container_image": "ca-rsi-runtime:local"
+        },
+        "algorithm": {
+          "name": "meta_harness",
+          "worker": {
+            "type": "agent",
+            "llm": {
+              "model_name": "DeepSeek-V4-Flash",
+              "api_key": null,
+              "base_url": "https://token.matpool.com/v1",
+              "llm_max_retries": 1,
+              "extra_body": {
+                "temperature": 1.0,
+                "thinking": {
+                  "type": "disabled"
+                }
+              },
+              "unlimited_output": true,
+              "reasoning_effort": "none"
+            },
+            "name": "miniagent",
+            "max_turns": 30,
+            "timeout": 600
+          },
+          "max_steps": 4
+        },
+        "benchmark": {
+          "name": "hotpotqa",
+          "split": "auto",
+          "mode": "context",
+          "scoring": "official",
+          "seed": 43,
+          "split_counts": {
+            "train": 8,
+            "dev": 16,
+            "test": 16
+          },
+          "dataset": {
+            "source": "hotpotqa/hotpot_qa",
+            "config": "distractor",
+            "revision": "1908d6afbbead072334abe2965f91bd2709910ab",
+            "splits": [
+              "validation"
+            ]
+          }
+        }
+      },
+      "diagram": "results/evolution-view-meta_harness-miniagent-hotpotqa-20261128-163106-609439.svg"
+    },
+    {
+      "method": "recursive_ca_rsi",
+      "run_dir": "runs/study_20261128/recursive_ca_rsi/seed-43/recursive_ca_rsi-miniagent-hotpotqa-20261128-163113-702609",
+      "source_initial_snapshot": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+      "final_task_snapshot": "f9172501c859698a8072b2a67badcdd5a4b50eae031c5fef91db0032e6c2fe03",
+      "final_worker_snapshot": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+      "final_changed_paths": [
+        "middleware/answer_normalizer.py"
+      ],
+      "configured_steps": 4,
+      "recorded_steps": 4,
+      "test": {
+        "tasks": 16,
+        "exact_match": 0.5,
+        "f1": 0.6672619047619047
+      },
+      "rounds": [
+        {
+          "step": 0,
+          "status": "audited",
+          "problem": null,
+          "baseline_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "candidate_id": "7d16eee3c04563e2c192217484bee71f2936bc58e7b2176611f33979528df6c0",
+          "selected_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "selected_paths": [],
+          "retained_score": 0.5,
+          "retained_count": 2,
+          "retention_count": 0,
+          "retention": [],
+          "improved_best": null,
+          "changed_paths": [
+            "agent.yaml",
+            "middleware/answer_gate.py",
+            "skills/main.md"
+          ],
+          "variants": [
+            {
+              "id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+              "paths": [],
+              "score": 0.5,
+              "count": 2,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0
+            },
+            {
+              "id": "bacda18f84a80ec7a40d24af0e67ab2fe725ba65183bfbd55f64040779239a2e",
+              "paths": [
+                "middleware/answer_gate.py"
+              ],
+              "score": 0.5,
+              "count": 2,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0
+            },
+            {
+              "id": "395afc6aed53c8940d32f11e4a14ba71e280f549f3ff46c59c478525e4287639",
+              "paths": [
+                "agent.yaml",
+                "middleware/answer_gate.py"
+              ],
+              "score": 0.5,
+              "count": 2,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0
+            },
+            {
+              "id": "a0b195c67b46e3341b0c9f1dcf827a1c59e7358a316efeb76113961b4c927ab9",
+              "paths": [
+                "skills/main.md"
+              ],
+              "score": 0.5,
+              "count": 2,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0
+            },
+            {
+              "id": "8fa3903154247928a74645369ffd3d51652488c7a2cbe0308392cdedaa941815",
+              "paths": [
+                "middleware/answer_gate.py",
+                "skills/main.md"
+              ],
+              "score": 0.5,
+              "count": 2,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0
+            },
+            {
+              "id": "7d16eee3c04563e2c192217484bee71f2936bc58e7b2176611f33979528df6c0",
+              "paths": [
+                "agent.yaml",
+                "middleware/answer_gate.py",
+                "skills/main.md"
+              ],
+              "score": 0.5,
+              "count": 2,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0
+            }
+          ]
+        },
+        {
+          "step": 1,
+          "status": "audited",
+          "problem": null,
+          "baseline_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "candidate_id": "7649341b7153d89527eaed2bb47c194bb52c3cdc22dac3e5b93eb9ac329c72a0",
+          "selected_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "selected_paths": [],
+          "retained_score": 0.5,
+          "retained_count": 2,
+          "retention_count": 2,
+          "retention": [],
+          "improved_best": null,
+          "changed_paths": [
+            "middleware/answer_span_gate.py"
+          ],
+          "variants": [
+            {
+              "id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+              "paths": [],
+              "score": 0.5,
+              "count": 2,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0
+            },
+            {
+              "id": "7649341b7153d89527eaed2bb47c194bb52c3cdc22dac3e5b93eb9ac329c72a0",
+              "paths": [
+                "middleware/answer_span_gate.py"
+              ],
+              "score": 0.0,
+              "count": 2,
+              "improved": 0,
+              "regressions": 1,
+              "errors": 0
+            }
+          ]
+        },
+        {
+          "step": 2,
+          "status": "audited",
+          "problem": null,
+          "baseline_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "candidate_id": "f9172501c859698a8072b2a67badcdd5a4b50eae031c5fef91db0032e6c2fe03",
+          "selected_id": "f9172501c859698a8072b2a67badcdd5a4b50eae031c5fef91db0032e6c2fe03",
+          "selected_paths": [
+            "middleware/answer_normalizer.py"
+          ],
+          "retained_score": 0.0,
+          "retained_count": 2,
+          "retention_count": 4,
+          "retention": [
+            {
+              "snapshot_id": "f9172501c859698a8072b2a67badcdd5a4b50eae031c5fef91db0032e6c2fe03",
+              "regressions": 0
+            }
+          ],
+          "improved_best": null,
+          "changed_paths": [
+            "middleware/answer_normalizer.py"
+          ],
+          "variants": [
+            {
+              "id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+              "paths": [],
+              "score": 0.0,
+              "count": 2,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0
+            },
+            {
+              "id": "f9172501c859698a8072b2a67badcdd5a4b50eae031c5fef91db0032e6c2fe03",
+              "paths": [
+                "middleware/answer_normalizer.py"
+              ],
+              "score": 0.5,
+              "count": 2,
+              "improved": 1,
+              "regressions": 0,
+              "errors": 0
+            }
+          ]
+        },
+        {
+          "step": 3,
+          "status": "skipped_edit_budget",
+          "problem": null,
+          "baseline_id": "f9172501c859698a8072b2a67badcdd5a4b50eae031c5fef91db0032e6c2fe03",
+          "candidate_id": "be68bdd22cba333f389b9a20c89226aaf294bae2559933b02e5d4339fa6dd4dc",
+          "selected_id": "f9172501c859698a8072b2a67badcdd5a4b50eae031c5fef91db0032e6c2fe03",
+          "selected_paths": [],
+          "retained_score": 0.0,
+          "retained_count": 2,
+          "retention_count": 0,
+          "retention": [],
+          "improved_best": null,
+          "changed_paths": [
+            "agent.yaml",
+            "middleware/answer_normalizer.py",
+            "prompts/system.md",
+            "skills/main.md"
+          ],
+          "variants": []
+        }
+      ],
+      "diagnoses": [
+        {
+          "step": 0,
+          "attempt": 0,
+          "candidate_id": "7d16eee3c04563e2c192217484bee71f2936bc58e7b2176611f33979528df6c0",
+          "issues": [
+            {
+              "path": "middleware/answer_gate.py",
+              "kind": "answer-format mismatch (regression)",
+              "claim": "The gate's numeric escalation is not format-neutral: on 5ab874ba the model's correct answer 'Joint Chiefs of Staff' became 'Chairman of the Joint Chiefs of Staff' after the gate intervened, dropping exact_match 1.0 -> 0.0 (f1 0.8). Two mechanisms are consistent with the evidence. (a) _is_count_value's optional unit alternation plus [\\s\"'`*.]* and fullmatch on the trailing-dot-optional pattern cannot match 'Joint Chiefs of Staff', so the escalation branch itself should not fire; however the model_calls log shows two turns for that ID in the 'before' run only, meaning escalation did fire for a non-numeric answer or the diff in the 'after' run is a model-side variance. (b) More robustly, the escalation feedback string tells the model to 'Reply with the corrected answer only', which invites re-phrasing/expansion of an already-correct entity answer rather than a corrected number. Both are hypotheses; the format-clean step (clean_answer) has no rule that would expand an answer, so a cleaning-side cause is not supported.",
+              "evidence_task_ids": [
+                "5ab874ba5542990e739ec904"
+              ],
+              "repair": "Restrict the escalation to genuinely numeric answers by tightening _is_count_value to require a bare number (digits/comma/decimal only, with at most a single unit token and no other letters), and make _escalation_feedback explicitly state 'if the previous answer is already correct, return it verbatim; do not add or strip titles'. Additionally require that the question itself contains a counting cue (any _COUNT_CUES) before escalating.",
+              "verification": "Run the gate in isolation (pure function tests, no model) on the pair (question='The Twelfth United States Army Group commander was the first chairman of what?', answer='Joint Chiefs of Staff'): assert _is_count_value returns False and before_final returns {'action':'accept'}. Then assert the same input under the BA Connect question ('...population...', answer='14,771') still returns action 'continue' exactly once, and that '26,788' on the second pass yields action 'accept'."
+            },
+            {
+              "path": "middleware/answer_gate.py",
+              "kind": "reasoning error (missed multi-hop decoy) — uncertain / may be model-side",
+              "claim": "On 5ac1ff22 the first-turn answer was the neighbouring-ward figure '14,771' (Northenden) instead of Didsbury's '26,788'. Two-hop association (BA Connect -> Didsbury -> population) was not made. The gate's numeric escalation then corrected it on turn 2, so the net 'after' score is 1.0; the miss is a reasoning error in the base model, not proven to be caused by the harness. The gate's decoy-targeting feedback text only mentions 'neighbouring area, edition or relative', which happens to help here but is not a systematic fix.",
+              "evidence_task_ids": [
+                "5ac1ff2255429964131be2b3"
+              ],
+              "repair": "No harness code change strictly required (gate already recovered the answer at cost of a second turn). If a minimal improvement is wanted, extend the main skill's counting bullet to name the two-hop failure explicitly: 'first resolve the entity named in the question (e.g. headquarters city) and only then read that entity's population; never answer with a figure from an adjacent passage that merely also has a 2011 population.'",
+              "verification": "Replay the BA Connect task with the gate disabled and confirm the model still answers 26,788 on turn 1 in >=4/5 samples with the added skill line; if it does not, the failure is model-side and the skill line is the only lever."
+            },
+            {
+              "path": "agent.yaml",
+              "kind": "uncertain hypothesis / no observed failure",
+              "claim": "agent.yaml enables the answer_gate middleware on a 1-turn default budget. The only harness-attributable score change in the audit (Joint Chiefs of Staff) coincides with an added turn, and no separate ground-truth failure was traced to the gate's format cleaning. Not enough evidence to blame the yaml wiring itself.",
+              "evidence_task_ids": [
+                "5ab3c270554299233954ff9e",
+                "5ab874ba5542990e739ec904",
+                "5a7e05ba5542995f4f402392",
+                "5ac1ff2255429964131be2b3"
+              ],
+              "repair": "Hold agent.yaml unchanged; do not add sub_agents or change prompts. If the escalation fix above is adopted, keep the gate enabled and leave budget as-is until a re-audit shows whether escalation still triggers on non-numeric answers.",
+              "verification": "After the answer_gate fix, check the audit trace events for a run of these four training IDs: assert 'answer_gate_escalate' fires only for 5ac1ff22 (the sole numeric answer) and never for the three entity-answer IDs."
+            }
+          ],
+          "status": "hypothesis_not_verified"
+        },
+        {
+          "step": 1,
+          "attempt": 0,
+          "candidate_id": "7649341b7153d89527eaed2bb47c194bb52c3cdc22dac3e5b93eb9ac329c72a0",
+          "issues": [
+            {
+              "path": "middleware/answer_span_gate.py",
+              "kind": "answer-format mismatch (unfixed)",
+              "claim": "The trailing-parenthetical alias removal in clean_answer never fires for the observed output 'Spyker F1 (Etihad Aldar Spyker F1 Team)'. _presence_needle strips parentheses but not spaces, so the alias needle stays 'etihad aldar spyker f1 team' while context_norm contains '(... etihad aldar spyker f1 team for sponsorship ...)'; the alias is therefore judged not grounded, and the head/alias substring branch also fails, so the parenthetical survives and exact match stays 0 (output before and after identical, f1 0.44).",
+              "evidence_task_ids": [
+                "5ab3c270554299233954ff9e"
+              ],
+              "repair": "In clean_answer, when the answer's trailing parenthetical is not verbatim grounded but its alias tokens are all high-salience words of the alias, drop the parenthetical whenever the head alone is grounded in the evidence and the question does not ask for a disambiguated/full official name (i.e. treat alias as removable when head_grounded and the parenthesis follows the head as a gloss, not when the parenthesis is the only grounded surface form).",
+              "verification": "Replay clean_answer('Spyker F1 (Etihad Aldar Spyker F1 Team)', evidence of task 5ab3c270...) in a unit test and assert the return is ('Spyker F1', 'alias_removed'); also assert exact_match becomes 1.0 on that single consumed task."
+            },
+            {
+              "path": "middleware/answer_span_gate.py",
+              "kind": "reasoning error (gate cannot see / repair it)",
+              "claim": "Task 5ac1ff22... returns the neighbouring ward's figure (14,771 for Northenden) instead of Didsbury's 26,788. The gate's subject-revision path only triggers on _NUMBER_ONLY_RE answers when a concrete-subject entity is asked for, but this question ('what was the population of suburban area...') asks for a population value, so _COUNT_CUES ('what was the population') matches and _needs_subject_revision returns False; the answer is accepted unchanged before and after. The wrong hop is not a format defect and is not addressed by this patch.",
+              "evidence_task_ids": [
+                "5ac1ff2255429964131be2b3"
+              ],
+              "repair": "Either scope this gate out of hop-selection (document that bridge-selection errors are out of scope here) or add a bounded routing check: require the answer's passage to contain the bridge entity from the question (e.g. 'Didsbury' from 'BA Connect ... headquartered in ...') and escalate once when the numeric answer's passage lacks it; cap at one escalation and fail open.",
+              "verification": "Falsifiable: on task 5ac1ff2255429964131be2b3 the proposed routing check must flag '14,771' (passage 'Northenden' does not contain 'Didsbury') and not flag '26,788'; and on 5ab874ba... ('Joint Chiefs of Staff') and 5a7e05ba... it must not trigger. If it cannot distinguish, drop the repair."
+            },
+            {
+              "path": "middleware/answer_span_gate.py",
+              "kind": "answer-format/grounding mismatch (alias vs full name, likely unfixable without knowing grader)",
+              "claim": "Task 5a7602d8... ground truth is 'Dawn Roma French' while the model answered 'Dawn French'. 'Dawn French' is grounded (a passage title) and 'Dawn Roma French' appears in the body, but the gate only ever shortens/dedupes or replaces with presence-verified candidates derived from the answer text or passage titles; it never expands 'Dawn French' to the fuller grounded form, so f1 stays 0.8 before and after.",
+              "evidence_task_ids": [
+                "5a7602d8554299109176e5fb"
+              ],
+              "repair": "Do not expand by default (risk of regressions on tasks where the short name is the graded form). If pursued, only expand when a passage title exactly equals the answer and that passage's first sentence contains a longer parenthetical/full-name form whose tokens strictly extend the title, and escalate once; mark this as an unverified hypothesis.",
+              "verification": "Unit check: on the Dawn French passage the expansion must yield 'Dawn Roma French' from the title+first-sentence pattern, and on tasks 5ab3c270/5ab874ba/5a7e05ba/5ab736a6 it must not alter the answer (no expansion candidate)."
+            }
+          ],
+          "status": "hypothesis_not_verified"
+        },
+        {
+          "step": 2,
+          "attempt": 0,
+          "candidate_id": "e5b945ac3d08794973ea545c579baffe0f53b3560215a0d038c8c27e23b9753d",
+          "issues": [
+            {
+              "path": "middleware/answer_normalizer.py",
+              "kind": "reasoning_error (middleware-induced behavioral regression on the second-chance path)",
+              "claim": "The bounded escalation fires on already-correct short answers, and the post-escalation turn then replaces the correct value with a copied sentence. For 5a7cb993554299452d57b9c2 the before-answer was 'Very little.' (exact match, F1 1.0) and the after-answer was 'The circuit has very little change in elevation.' (EM 0.0). No `answer_normalizer_clean` note could have been recorded (the only note candidate would be 'trailing_period_removed', which sets notes, so `not notes` would be False and escalation blocked -- yet the answer changed), which indicates the escalation/`continue` branch ran; the feedback text's own phrasing ('If the context genuinely supports only a one-word answer, give that word' plus 'not for the sentence that contains it') steered the model to re-emit the whole passage sentence. This is the same regression class the module docstring claims to avoid.",
+              "evidence_task_ids": [
+                "5a7cb993554299452d57b9c2"
+              ],
+              "repair": "Do not escalate when the cleaned answer is already a minimal non-sentence value. Concretely: require the escalation candidate to be strictly longer/more sentence-like than a minimal span (e.g. reject when the cleaned answer has <= 6 words OR when the answer without the verbatim-clause match yields a short sub-span, as 'very little' does), and remove the 'give that word' hint from `_feedback`; alternatively only escalate when the copied sentence contains a short numeric/name span the question asks for.",
+              "verification": "Unit-check `before_final` on task 5a7cb993554299452d57b9c2 with answer 'Very little.' and the supplied messages: assert the returned action is 'accept' or a 'replace' with value 'Very little' (no 'continue'), i.e. no 'answer_normalizer_escalate' trace event is emitted. A rerun of that task must keep exact_match 1.0."
+            },
+            {
+              "path": "middleware/answer_normalizer.py",
+              "kind": "answer-format_mismatch (over-eager escalation on multi-clause answers that could be trimmed)",
+              "claim": "The `_verbatim_clause` + `asks_short` gate treats any ≥3-word answer that appears as a clause in a passage as a 'copied sentence' candidate, including answers that already carry the correct value plus explanatory parenthetical. It cannot distinguish 'answer plus harmless extra clause' from a pure sentence copy, so extra turns are spent on answers that need only format trimming (e.g. 'Spyker F1 (Etihad Aldar Spyker F1 Team)', 'A.P. Møller (Arnold Peter Møller)', 'Dawn French'). In the supplied after data these items ended with turns=1 and unchanged outputs, so the escalation demonstrably cannot repair them and does not itself cause these particular score misses; the risk is speculative for these IDs.",
+              "evidence_task_ids": [
+                "5ab3c270554299233954ff9e",
+                "5ae7940c55429952e35ea984",
+                "5a7602d8554299109176e5fb"
+              ],
+              "repair": "Gate escalation on evidence that the answer is *only* a sentence, not value+tail: block escalation when the cleaned answer starts with a capitalized value head followed by a parenthetical, and prefer a deterministic `normalize` rule that strips a trailing parenthetical whose content is an alias of the head (already attempted for 'also known as/aka' but misses bare parentheticals like '(Etihad Aldar Spyker F1 Team)' and '(Arnold Peter Møller)').",
+              "verification": "Call `normalize` on 'Spyker F1 (Etihad Aldar Spyker F1 Team)', 'A.P. Møller (Arnold Peter Møller)', 'Dawn French' and assert either an unchanged return or, if a rule is added, that it yields 'Spyker F1' / 'A.P. Møller' / 'Dawn French' and that `before_final` returns action 'replace' with no 'continue' for each."
+            },
+            {
+              "path": "middleware/answer_normalizer.py",
+              "kind": "uncertain_hypothesis (grader-strictness / answer-alias mismatch, not attributable to the middleware)",
+              "claim": "Two residual misses are alias/qualifier mismatches judged exactly (`A.P. Møller` vs 'A.P. Møller (Arnold Peter Møller)', 'Dawn Roma French' vs 'Dawn French', 'Virgin' label correct but 'Etihad Aldar Spyker F1 Team' extra). Because before and after outputs for 5ab3c270554299233954ff9e, 5ae7940c55429952e35ea984 and 5a7602d8554299109176e5fb are identical and unmodified with turns=1, the middleware neither helped nor harmed; the difference is a grader/alias-normalization gap, and the score difference alone does not establish that any middleware change caused it.",
+              "evidence_task_ids": [
+                "5ab3c270554299233954ff9e",
+                "5ae7940c55429952e35ea984",
+                "5a7602d8554299109176e5fb"
+              ],
+              "repair": "No middleware change implied for these IDs; if pursued, only a fail-open alias-reduction in `normalize` (strip parenthetical restatement, keep the short head the model already gave), leaving grounding untouched.",
+              "verification": "For each listed ID, diff the emitted final answer string before and after; if byte-identical and turns=1, confirm the miss is grader/alias-side rather than middleware-side (no trace event from answer_normalizer)."
+            },
+            {
+              "path": "middleware/answer_normalizer.py",
+              "kind": "reasoning_error (model-side, unfixed by middleware)",
+              "claim": "On 5ac1ff2255429964131be2b3 the model answered '14,771' (Northenden) instead of '26,788' (Didsbury) though the context states BA Connect is headquartered in Didsbury. The answer is a single bare number, so `normalize` finds nothing, `_sentence_like` is False (1 word) and no escalation can fire; the middleware has no lever here and the miss is a hop-selection error. The 'headquartered in Manchester, England' phrasing likely lured the model to the first Manchester ward with a matching population figure.",
+              "evidence_task_ids": [
+                "5ac1ff2255429964131be2b3"
+              ],
+              "repair": "Out of scope for a normalization-only middleware; if addressed, only a fail-open hint when multiple supplied blocks match the question's ward/population shape, and only after the single preceding miss is fixed. Do not add entity substitution.",
+              "verification": "Confirm `before_final('14,771')` returns action 'accept' and that no trace event is emitted; then any change must flip that ID to '26,788' without altering 5ab874ba5542990e739ec904 or 5a7e05ba5542995f4f402392 (both already EM 1.0)."
+            }
+          ],
+          "status": "hypothesis_not_verified"
+        }
+      ],
+      "repairs": [
+        {
+          "step": 0,
+          "attempt": 0,
+          "before_id": "7d16eee3c04563e2c192217484bee71f2936bc58e7b2176611f33979528df6c0",
+          "after_id": "a3396e4c86ae3611961a3379f220ac82f6ba06a4c81a98bb6637b4495895fe4e",
+          "accepted_on_train": false,
+          "problem": null,
+          "before_score": 0.75,
+          "after_score": 0.5
+        },
+        {
+          "step": 1,
+          "attempt": 0,
+          "before_id": "7649341b7153d89527eaed2bb47c194bb52c3cdc22dac3e5b93eb9ac329c72a0",
+          "after_id": "958b6e3859e8cdfc3f8082d75904dfcf77677fd2ed3ecda83cac914a3a25dd57",
+          "accepted_on_train": false,
+          "problem": null,
+          "before_score": 0.5,
+          "after_score": 0.5
+        },
+        {
+          "step": 2,
+          "attempt": 0,
+          "before_id": "e5b945ac3d08794973ea545c579baffe0f53b3560215a0d038c8c27e23b9753d",
+          "after_id": "f9172501c859698a8072b2a67badcdd5a4b50eae031c5fef91db0032e6c2fe03",
+          "accepted_on_train": true,
+          "problem": null,
+          "before_score": 0.375,
+          "after_score": 0.5
+        }
+      ],
+      "meta_updates": [
+        {
+          "step": 0,
+          "worker_before_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "worker_candidate_id": "a634d766e0cbbd4cb8eb9a40b3dbfd658b8cd9a7c21e3df9b890e21689cbbf22",
+          "changed_paths": [
+            "prompts/extract.md",
+            "prompts/system.md",
+            "skills/main.md"
+          ],
+          "accepted": false,
+          "mean_paired_gain": null,
+          "regressions": null,
+          "task_regressions": null,
+          "task_baseline_score": 0.5,
+          "trials": [
+            {
+              "repeat": 0,
+              "original": {
+                "snapshot_id": "2d7963cf2a5209ea05827e1b1e7ba05a9188e41c530275254ea45196160969a7",
+                "usable": true,
+                "problem": null,
+                "score": 0.5,
+                "per_task": {
+                  "5ac4f33355429924173fb507": 0.0,
+                  "5ae09ea05542993d6555ebc1": 1.0
+                }
+              },
+              "revised": {
+                "snapshot_id": "0dd1732c47bfd8b69b92f6399085a945f2f84e98e233b7ddeb9f24d88b6f4c28",
+                "usable": true,
+                "problem": null,
+                "score": 0.5,
+                "per_task": {
+                  "5ac4f33355429924173fb507": 0.0,
+                  "5ae09ea05542993d6555ebc1": 1.0
+                }
+              }
+            },
+            {
+              "repeat": 1,
+              "revised": {
+                "snapshot_id": "3f71906e899cbd70572fd5c8b83109f46e8b503a2bbd184b4c844c33d209288b",
+                "usable": true,
+                "problem": null,
+                "score": 0.5,
+                "per_task": {
+                  "5ac4f33355429924173fb507": 0.0,
+                  "5ae09ea05542993d6555ebc1": 1.0
+                }
+              },
+              "original": {
+                "usable": false,
+                "problem": "miniagent failed: llm_error: Connection error.",
+                "score": null,
+                "per_task": {}
+              }
+            }
+          ],
+          "scope": "fresh_meta_dev_repeated_paired_estimate_not_causal_proof",
+          "actual_changed_paths": [
+            "prompts/extract.md",
+            "prompts/system.md",
+            "skills/main.md"
+          ]
+        },
+        {
+          "step": 1,
+          "worker_before_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "worker_candidate_id": "c01187fa72c563d20f7a267a7e8ceac17e8b18900a7f93c3531be69a972dda48",
+          "changed_paths": [
+            "skills/main.md"
+          ],
+          "accepted": false,
+          "mean_paired_gain": 0.0,
+          "regressions": 1,
+          "task_regressions": 2,
+          "task_baseline_score": 1.0,
+          "trials": [
+            {
+              "repeat": 0,
+              "original": {
+                "snapshot_id": "179861c5426eb5c53b592bb1c006543a9877c31d505d7920cee775cff7e3908c",
+                "usable": true,
+                "problem": null,
+                "score": 0.5,
+                "per_task": {
+                  "5a77253455429972597f1449": 0.0,
+                  "5a7ccc1e55429909bec7680e": 1.0
+                }
+              },
+              "revised": {
+                "snapshot_id": "0ad4046bc9c3227b12b08a25a7a65a747faa5681e4369d1365aa1cace6e3bacd",
+                "usable": true,
+                "problem": null,
+                "score": 1.0,
+                "per_task": {
+                  "5a77253455429972597f1449": 1.0,
+                  "5a7ccc1e55429909bec7680e": 1.0
+                }
+              }
+            },
+            {
+              "repeat": 1,
+              "revised": {
+                "snapshot_id": "d154036f6baab8add02852aa2d77b550eb0f1ed71f9cfaa13807605173ab207d",
+                "usable": true,
+                "problem": null,
+                "score": 0.0,
+                "per_task": {
+                  "5a77253455429972597f1449": 0.0,
+                  "5a7ccc1e55429909bec7680e": 0.0
+                }
+              },
+              "original": {
+                "snapshot_id": "a0209c95f2c9d7b2f9a1dcd4726ad4ab2008a823efbc592dcaab9420236aabda",
+                "usable": true,
+                "problem": null,
+                "score": 0.5,
+                "per_task": {
+                  "5a77253455429972597f1449": 1.0,
+                  "5a7ccc1e55429909bec7680e": 0.0
+                }
+              }
+            }
+          ],
+          "scope": "fresh_meta_dev_repeated_paired_estimate_not_causal_proof",
+          "actual_changed_paths": [
+            "skills/main.md"
+          ]
+        },
+        {
+          "step": 2,
+          "worker_before_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "worker_candidate_id": "4ea4c3b57d277440a6ba795767096929f7f636a5f7aad5630d88113fc2e8b9a9",
+          "changed_paths": [
+            "prompts/system.md",
+            "skills/main.md"
+          ],
+          "accepted": false,
+          "mean_paired_gain": 0.0,
+          "regressions": 0,
+          "task_regressions": 0,
+          "task_baseline_score": 0.5,
+          "trials": [
+            {
+              "repeat": 0,
+              "original": {
+                "snapshot_id": "58d159b5d323b03f7ed471b42df56c3025aa27fd05972ee3931f35440f124f09",
+                "usable": true,
+                "problem": null,
+                "score": 0.5,
+                "per_task": {
+                  "5aba52e655429939ce03dc94": 0.0,
+                  "5ae096d755429906c02daadf": 1.0
+                }
+              },
+              "revised": {
+                "snapshot_id": "83509b8730f1292f552fc46ea88402f5b6035c16353810c593bbfcb643f7f41b",
+                "usable": true,
+                "problem": null,
+                "score": 0.5,
+                "per_task": {
+                  "5aba52e655429939ce03dc94": 0.0,
+                  "5ae096d755429906c02daadf": 1.0
+                }
+              }
+            },
+            {
+              "repeat": 1,
+              "revised": {
+                "snapshot_id": "6a890dd45c83455c78a827be0dffc5c89905cd9593664de3acc713104109a91e",
+                "usable": true,
+                "problem": null,
+                "score": 0.5,
+                "per_task": {
+                  "5aba52e655429939ce03dc94": 0.0,
+                  "5ae096d755429906c02daadf": 1.0
+                }
+              },
+              "original": {
+                "snapshot_id": "41f432cb09273607bcd8242eb8fae80b187706e7f8eeea43f112f8d6a2b3ac76",
+                "usable": true,
+                "problem": null,
+                "score": 0.5,
+                "per_task": {
+                  "5aba52e655429939ce03dc94": 0.0,
+                  "5ae096d755429906c02daadf": 1.0
+                }
+              }
+            }
+          ],
+          "scope": "fresh_meta_dev_repeated_paired_estimate_not_causal_proof",
+          "actual_changed_paths": [
+            "prompts/system.md",
+            "skills/main.md"
+          ]
+        },
+        {
+          "step": 3,
+          "accepted": false,
+          "worker_before_id": "539280bb6d6e8421e76477a9a0ff432637961db75822bc6bb866c0f1f70c0abd",
+          "worker_candidate_id": "d3def3692f0a31a69ce7398cbf20e578722aa9cdb7c24b77ed838aa7740abe07",
+          "problem": "unchanged or over-budget Meta proposal",
+          "actual_changed_paths": []
+        }
+      ],
+      "worker_failures": [
+        {
+          "record": "00028-worker.json",
+          "error": "llm_error: Connection error."
+        }
+      ],
+      "target_rule_replay_events": 0,
+      "final_test_tool_calls": {},
+      "usage": {
+        "roles": {
+          "target": {
+            "finished": {
+              "input_tokens": 324900,
+              "output_tokens": 978,
+              "cache_read_tokens": 255479,
+              "cache_write_tokens": 0,
+              "usage_entries": 141,
+              "usage_entries_missing_tokens": 0,
+              "sdk_cost_entries": 0,
+              "duplicate_usage_entries": 0,
+              "records": 139,
+              "finished_records": 139,
+              "failed_records": 0,
+              "sdk_cost_usd": null,
+              "cost_bases": []
+            }
+          },
+          "worker": {
+            "finished": {
+              "input_tokens": 16735887,
+              "output_tokens": 203502,
+              "cache_read_tokens": 15051776,
+              "cache_write_tokens": 0,
+              "usage_entries": 622,
+              "usage_entries_missing_tokens": 0,
+              "sdk_cost_entries": 0,
+              "duplicate_usage_entries": 0,
+              "records": 25,
+              "finished_records": 25,
+              "failed_records": 0,
+              "sdk_cost_usd": null,
+              "cost_bases": []
+            },
+            "failed": {
+              "input_tokens": 16359,
+              "output_tokens": 713,
+              "cache_read_tokens": 12288,
+              "cache_write_tokens": 0,
+              "usage_entries": 6,
+              "usage_entries_missing_tokens": 0,
+              "sdk_cost_entries": 0,
+              "duplicate_usage_entries": 0,
+              "records": 1,
+              "finished_records": 0,
+              "failed_records": 1,
+              "sdk_cost_usd": null,
+              "cost_bases": []
+            }
+          }
+        },
+        "total": {
+          "input_tokens": 17077146,
+          "output_tokens": 205193,
+          "cache_read_tokens": 15319543,
+          "cache_write_tokens": 0,
+          "usage_entries": 769,
+          "usage_entries_missing_tokens": 0,
+          "sdk_cost_entries": 0,
+          "duplicate_usage_entries": 0,
+          "records": 165,
+          "finished_records": 164,
+          "failed_records": 1,
+          "sdk_cost_usd": null,
+          "cost_bases": []
+        },
+        "gateway_actual_cost_usd": null,
+        "scope": "saved_trajectories"
+      },
+      "execution": {
+        "elapsed_seconds": 2191.720978791942,
+        "python": "3.12.16 (main, Nov 24 2026, 16:50:40) [Clang 23.1.3 ]",
+        "scope": "whole_launcher_including_prepare_and_test"
+      },
+      "resumed_after_error": false,
+      "wall_elapsed_seconds": 3942.2771275043488,
+      "parameters": {
+        "agent": {
+          "name": "miniagent",
+          "llm": {
+            "model_name": "DeepSeek-V4-Flash",
+            "api_key": null,
+            "base_url": "https://token.matpool.com/v1",
+            "llm_max_retries": 1,
+            "extra_body": {
+              "temperature": 1.0,
+              "thinking": {
+                "type": "disabled"
+              }
+            },
+            "unlimited_output": true,
+            "reasoning_effort": "none"
+          },
+          "max_turns": 6,
+          "timeout": 300,
+          "container_image": "ca-rsi-runtime:local"
+        },
+        "algorithm": {
+          "name": "recursive_ca_rsi",
+          "worker": {
+            "type": "agent",
+            "llm": {
+              "model_name": "DeepSeek-V4-Flash",
+              "api_key": null,
+              "base_url": "https://token.matpool.com/v1",
+              "llm_max_retries": 1,
+              "extra_body": {
+                "temperature": 1.0,
+                "thinking": {
+                  "type": "disabled"
+                }
+              },
+              "unlimited_output": true,
+              "reasoning_effort": "none"
+            },
+            "name": "miniagent",
+            "max_turns": 30,
+            "timeout": 600
+          },
+          "max_steps": 4,
+          "max_edit_units": 3,
+          "max_task_regressions": 0,
+          "repair_attempts": 1,
+          "meta_self_update": true,
+          "max_meta_edit_units": 3,
+          "meta_repeats": 2,
+          "meta_train_tasks_per_step": 1
+        },
+        "benchmark": {
+          "name": "hotpotqa",
+          "split": "auto",
+          "mode": "context",
+          "scoring": "official",
+          "seed": 43,
+          "split_counts": {
+            "train": 8,
+            "dev": 16,
+            "test": 16
+          },
+          "dataset": {
+            "source": "hotpotqa/hotpot_qa",
+            "config": "distractor",
+            "revision": "1908d6afbbead072334abe2965f91bd2709910ab",
+            "splits": [
+              "validation"
+            ]
+          }
+        }
+      },
+      "diagram": "results/evolution-view-recursive_ca_rsi-miniagent-hotpotqa-20261128-163113-702609.svg"
+    }
+  ],
+  "comparison": {
+    "em_difference_percentage_points": 0.0,
+    "f1_difference_percentage_points": -1.0119047619047694,
+    "recorded_total_tokens_base": 4952833,
+    "recorded_total_tokens_recursive": 17282339,
+    "recorded_total_tokens_ratio_recursive_over_base": 3.48938456031124,
+    "recursive_task_update_rounds": 1,
+    "recursive_meta_update_rounds": 0,
+    "paired_test_em_gains": 0,
+    "paired_test_em_regressions": 0
+  },
+  "paired_test": [
+    {
+      "task_id": "5ac05c245542992a796dece5",
+      "base_metrics": {
+        "exact_match": 0.0,
+        "f1": 0.8
+      },
+      "recursive_metrics": {
+        "exact_match": 0.0,
+        "f1": 0.5714285714285715
+      },
+      "base_answer": "Richard Rodgers",
+      "recursive_answer": "American composer Richard Rodgers."
+    },
+    {
+      "task_id": "5adc368155429944faac2468",
+      "base_metrics": {
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "recursive_metrics": {
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "base_answer": "Pablo Escobar",
+      "recursive_answer": "Pablo Escobar"
+    },
+    {
+      "task_id": "5adfa570554299025d62a31c",
+      "base_metrics": {
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "recursive_metrics": {
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "base_answer": "12",
+      "recursive_answer": "12"
+    },
+    {
+      "task_id": "5ae12fcf5542990adbacf72c",
+      "base_metrics": {
+        "exact_match": 0.0,
+        "f1": 0
+      },
+      "recursive_metrics": {
+        "exact_match": 0.0,
+        "f1": 0
+      },
+      "base_answer": "Animated",
+      "recursive_answer": "Animated"
+    },
+    {
+      "task_id": "5a82e36255429940e5e1a93b",
+      "base_metrics": {
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "recursive_metrics": {
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "base_answer": "Nani",
+      "recursive_answer": "Nani"
+    },
+    {
+      "task_id": "5adf50c05542992d7e9f931e",
+      "base_metrics": {
+        "exact_match": 0.0,
+        "f1": 0
+      },
+      "recursive_metrics": {
+        "exact_match": 0.0,
+        "f1": 0
+      },
+      "base_answer": "Yes.",
+      "recursive_answer": "Yes. Both are described as dream pop bands: The Radio Dept. is a dream pop band from Lund, Sweden, and Letting Up Despite Great Faults (compared to The Radio Dept.) is indie pop/dream pop. However, the context describes The Sundays only as an English alternative rock band, not explicitly as dream pop — so strictly from the supplied context, only The Radio Dept. is confirmed as dream pop.\n\nShort answer: The Radio Dept. yes; The Sundays not stated in the context."
+    },
+    {
+      "task_id": "5ae7882b554299540e5a55dd",
+      "base_metrics": {
+        "exact_match": 0.0,
+        "f1": 0.33333333333333337
+      },
+      "recursive_metrics": {
+        "exact_match": 0.0,
+        "f1": 0.4
+      },
+      "base_answer": "He is Christian Yelich's great-grandfather.",
+      "recursive_answer": "Great-grandfather of Christian Yelich."
+    },
+    {
+      "task_id": "5ab6e8e6554299710c8d1faf",
+      "base_metrics": {
+        "exact_match": 0.0,
+        "f1": 0.3333333333333333
+      },
+      "recursive_metrics": {
+        "exact_match": 0.0,
+        "f1": 0.3333333333333333
+      },
+      "base_answer": "Tom Courtenay",
+      "recursive_answer": "Tom Courtenay"
+    },
+    {
+      "task_id": "5abd74c95542993062266ca2",
+      "base_metrics": {
+        "exact_match": 0.0,
+        "f1": 0
+      },
+      "recursive_metrics": {
+        "exact_match": 0.0,
+        "f1": 0
+      },
+      "base_answer": "Tottenham Hotspur",
+      "recursive_answer": "Tottenham Hotspur"
+    },
+    {
+      "task_id": "5a83b01c5542996488c2e489",
+      "base_metrics": {
+        "exact_match": 0.0,
+        "f1": 0.8
+      },
+      "recursive_metrics": {
+        "exact_match": 0.0,
+        "f1": 0.8
+      },
+      "base_answer": "Matías Almeyda",
+      "recursive_answer": "Matías Almeyda"
+    },
+    {
+      "task_id": "5ae7b40e5542994a481bbdbd",
+      "base_metrics": {
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "recursive_metrics": {
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "base_answer": "David Kossoff",
+      "recursive_answer": "David Kossoff"
+    },
+    {
+      "task_id": "5a8b231055429949d91db4c9",
+      "base_metrics": {
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "recursive_metrics": {
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "base_answer": "FX",
+      "recursive_answer": "FX"
+    },
+    {
+      "task_id": "5ab1c2bf5542997061209558",
+      "base_metrics": {
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "recursive_metrics": {
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "base_answer": "University of Missouri",
+      "recursive_answer": "University of Missouri"
+    },
+    {
+      "task_id": "5ab4028555429976abd1bd2b",
+      "base_metrics": {
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "recursive_metrics": {
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "base_answer": "Shanghai",
+      "recursive_answer": "Shanghai"
+    },
+    {
+      "task_id": "5a90b43455429916514e7523",
+      "base_metrics": {
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "recursive_metrics": {
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "base_answer": "Sun Valley, Idaho",
+      "recursive_answer": "Sun Valley, Idaho"
+    },
+    {
+      "task_id": "5ac2cb09554299657fa29066",
+      "base_metrics": {
+        "exact_match": 0.0,
+        "f1": 0.5714285714285715
+      },
+      "recursive_metrics": {
+        "exact_match": 0.0,
+        "f1": 0.5714285714285715
+      },
+      "base_answer": "Texas Longhorns",
+      "recursive_answer": "Texas Longhorns"
+    }
+  ],
+  "limitations": [
+    "The selected recursive middleware is not registered; loaded prompts, tool schemas and middleware lists match the initial version.",
+    "Temperature 1 and independent model sampling prevent interpreting score differences as causal effects.",
+    "Each recursive Task audit and Meta probe uses only two fresh dev tasks.",
+    "An idle-sleep interruption preceded one connection failure in each run; the base resumed only its unfinished fourth step.",
+    "Costs are recorded token usage, not provider bills; unrecorded in-flight calls cannot be recovered.",
+    "The general rule-level intervention protocol is opt-in; target rule replay event counts are recorded separately."
+  ]
+}

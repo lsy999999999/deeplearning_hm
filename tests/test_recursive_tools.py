@@ -4,6 +4,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from xml.etree import ElementTree
 
 import pytest
 
@@ -99,3 +100,14 @@ def test_export_keeps_task_and_meta_versions_separate(tmp_path):
     output = tmp_path / "viewer.html"
     export([directory], output)
     assert "Meta 的诊断、修复与自身更新" in output.read_text()
+    assert "Meta 更新：采用" in output.read_text()
+    assert "Meta 更新：保留" in output.read_text()
+    svg = ElementTree.fromstring(next(tmp_path.glob("viewer-*.svg")).read_text())
+    texts = list(svg.iter("{http://www.w3.org/2000/svg}text"))
+    meta_y = [
+        float(t.attrib["y"]) for t in texts if (t.text or "").startswith("Meta 更新：")
+    ]
+    footer_y = next(
+        float(t.attrib["y"]) for t in texts if (t.text or "").startswith("最终版本")
+    )
+    assert footer_y > max(meta_y) + 15

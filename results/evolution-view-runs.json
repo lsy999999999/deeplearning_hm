@@ -3,6 +3,8 @@
     "runs/meta_harness_hotpotqa_pilot/meta_harness-miniagent-hotpotqa-20261127-183624-453530",
     "runs/hotpotqa_pilot/ca_rsi-miniagent-hotpotqa-20261127-182117-253432",
     "runs/study/meta_harness/seed-43/meta_harness-miniagent-hotpotqa-20261127-193656-488919",
-    "runs/study/ca_rsi/seed-43/ca_rsi-miniagent-hotpotqa-20261127-193749-026674"
+    "runs/study/ca_rsi/seed-43/ca_rsi-miniagent-hotpotqa-20261127-193749-026674",
+    "runs/study_20261128/meta_harness/seed-43/meta_harness-miniagent-hotpotqa-20261128-163106-609439",
+    "runs/study_20261128/recursive_ca_rsi/seed-43/recursive_ca_rsi-miniagent-hotpotqa-20261128-163113-702609"
   ]
 }

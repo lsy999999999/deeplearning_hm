@@ -1,8 +1,8 @@
 # CA-RSI 实验记录
 
 本文件记录 base 的配置、CA-RSI 相对 base 的实验变量、实际结果和运行成本，后续实验继续追加。
-当前结果更新至 **2026-11-27**，包含 HotpotQA 的单种子单轮和四轮小规模实验。
-第 1–3.4 节记录历史单轮设置与结果，三组统一对照及四轮进化图见第 3.5 节。
+当前结果更新至 **2026-11-28**，包含 HotpotQA 的历史单轮、四轮和递归模式对照实验。
+第 1–3.4 节记录历史单轮结果，三组统一对照见第 3.5 节，递归模式与新跑 base 的对照见第 3.6 节。
 原 README 已移至 [项目说明与阶段性分析](docs/archive/project-overview-2026-11-27.md)，
 环境安装和工具使用见 [本地复现说明](docs/local_run.zh-CN.md)。
 
@@ -11,7 +11,9 @@
 新增 `recursive_ca_rsi`：Meta 自动诊断和修复 Task 修改，并提出自身策略的修改；
 新旧 Meta 在新的下游改进任务上配对验证，通过后新版才成为下一轮 Worker。
 Task 和 Meta 分别保存版本，最终测试不参与选择。
-本次只完成代码与离线行为验证，尚无该新模式的真实模型性能结果；下文历史实验仍属于原版方法。
+已按昨日环境完成一次四轮真实模型试运行，与当前代码版本的原版 Meta-Harness 对照。
+本轮未发生 Meta 版本接纳，也未观察到有效答题策略改进；结果、成本和限制见第 3.6 节。
+下文第 3.1–3.5 节的历史实验仍属于原版方法。
 运行配置为 [`recursive_ca_rsi_hotpotqa.yaml`](configs/recursive_ca_rsi_hotpotqa.yaml)，
 流程、数据划分和启动方式见 [递归模式说明](docs/recursive_ca_rsi.zh-CN.md)。
 
@@ -242,6 +244,93 @@ CA-RSI 的已记录输入加输出 token 总量更少，但用量条目更多；
 - CA-RSI：`ca_rsi-miniagent-hotpotqa-20261127-193749-026674`
 
 完整轨迹仍在本地 `runs/study/`；仓库保留结构化结果、成本汇总、交互可视化和上面的 SVG 图。
+
+### 3.6 同一 MiniAgent 起点下的 Recursive CA-RSI 与 base（2026-11-28）
+
+本次两组仍使用 MiniAgent，模型、镜像和推理设置沿用昨日：
+`DeepSeek-V4-Flash`、`ca-rsi-runtime:local`、seed 43、4 轮、train/dev/test **8/16/16**、
+温度 1、关闭 thinking、不设置客户端输出 token 上限，Target/Worker 的调用轮数和超时不变。
+远程更新给 MiniAgent 增加了可选的规则审计接口和记录；两组都在代码提交 `1ad8a37` 上
+从同一个未演化 Snapshot `539280bb6d` 开始，没有使用昨日演化后的版本作为起点。
+
+为在 8 道训练题、4 轮下运行递归模式，设置 `meta_train_tasks_per_step: 1`：
+4 道题用于公开 Task 训练，4 道预留给各轮 Meta 挑战；16 道开发题分为 8 道 Task 审计题和
+8 道 Meta 验证题，每轮两条通道各使用 2 道新题。Meta 每轮配对重复 2 次，
+Task/Meta 修改文件数上限均为 3，允许退步数为 0，每轮最多尝试一次训练修复。
+base 沿用原版 Meta-Harness 的完整开发集选择规则，Worker 不自更新。
+两组的有效证据分配和实际调用量不同，不属于等预算或单一机制消融。
+
+完整结果和检查见 [`recursive-vs-base-20261128.json`](results/recursive-vs-base-20261128.json)，
+参数与运行边界见 [运行计划](results/recursive-vs-base-20261128-plan.json)。
+
+| 方法 | Task 接纳轮数 | Meta 自更新接纳轮数 | 测试集 EM | 测试集 F1 |
+| --- | ---: | --- | ---: | ---: |
+| Base：原版 Meta-Harness，4 轮 | 0 | —，固定 Worker | 8/16（50.00%） | 67.74% |
+| Recursive CA-RSI，4 轮 | 1 | 0 | 8/16（50.00%） | 66.73% |
+
+**本次没有观察到新方法优于 base 的收益。** 两组逐题 EM 的对错集合也完全相同，
+没有任何一题在两组之间发生 EM 改正或退步；F1 上新方法低约 **1.01 个百分点**。
+新方法虽然接纳了一次文件版本，但该文件未接入执行，不能把测得的分数变化解释为策略改进。
+这仍是一个种子、16 道历史测试题上的独立采样，没有使用新的独立测试集。
+昨日 base 的 70.14% F1 保留在第 3.5 节，本次独立运行的 67.74% 不覆盖那份历史记录。
+
+**Base 的运行过程。** 开发集基线为 9/16；第一、二轮候选分别为 8/16 和 7/16，均未接受。
+第三轮因为 `answer_flow.py` 不符合组件路径规则而未评测。
+第四轮最初出现连接错误，从该轮恢复后候选未作修改，最终保留初始 MiniAgent。
+恢复复用了前三轮记录，没有重新调用模型计算它们；失败请求及恢复后的调用均计入同一运行成本。
+
+![2026-11-28 Base 四轮选择](results/evolution-view-meta_harness-miniagent-hotpotqa-20261128-163106-609439.svg)
+
+**递归模式的逐轮结果。** 下表训练检查包含公开训练题及已经消耗的 Task 审计题，
+各轮分母因此不同；新题审计分数同样对应不同题目，不能当成同一批题的提升曲线。
+
+| 轮次 | 训练修复检查 | 正式 Task 审计与选择 | Meta 自更新检查 |
+| --- | --- | --- | --- |
+| 1 | 3/4 → 2/4，拒绝修复 | 原版与完整候选均 1/2，保留原版 | 4 次下游试验中 1 次连接失败，比较不完整，保留原 Meta |
+| 2 | 3/6 → 3/6，拒绝同分修复 | 原版 1/2，完整候选 0/2，保留原版 | 平均配对增益 0；未修改 Task 基线已为 2/2，不更新 |
+| 3 | 3/8 → 4/8，通过训练检查 | 原版 0/2 → 候选 1/2，旧题检查退步 0，接纳 `middleware/answer_normalizer.py` | 平均配对增益 0，不更新 |
+| 4 | 候选提出 4 个文件修改，超过上限 3，跳过修复和组合审计 | 保留第三轮版本；本轮原版新题为 0/2 | 自身提议没有产生文件变化，未进入下游验证 |
+
+最终 Task Snapshot 为 `f9172501c8`，最终 Meta 仍为初始版本 `539280bb6d`。
+本次配置启用了 Meta 自更新流程，但四轮均未通过接纳条件，没有发生实际的 Meta 换版。
+
+![Recursive CA-RSI 四轮 Task 与 Meta 选择](results/evolution-view-recursive_ca_rsi-miniagent-hotpotqa-20261128-163113-702609.svg)
+
+**修改是否真正生效。** 最终 Task 相对初始版本只增加了 `middleware/answer_normalizer.py`，
+`agent.yaml` 的 `middlewares` 仍为空。用实际 workspace 加载器静态检查，
+两者加载的 system/skill 提示、extract 提示、工具 schema 相同，中间件列表都为空。
+两组最终测试的记录中，16 道题首次回答前的 system/user 消息前缀相同，均没有工具调用。
+检查证据保存在 [activation-check.json](results/recursive-vs-base-20261128-activation-check.json)。
+
+因此，第三轮“训练检查提高、审计接纳”没有证明该中间件生效，暴露了在独立模型采样中
+审计未生效修改的归因问题。模型温度为 1，本轮分数差异不能归因于这项未注册的修改。
+本次 Target 的规则重放事件数为 0，普通诊断中的 `verification` 仍为文本，
+尚未把可执行规则干预协议接入这次自动演化；不能据此声称完成了规则级因果验证。
+
+**已记录成本。** 缓存读取已包含在输入 token 中，合计只加输入和输出。
+
+| 方法 | 输入 tokens | 输出 tokens | 输入加输出 | 缓存读取 tokens | 用量条目 | 失败 Worker 记录 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Base | 4,911,280 | 41,553 | 4,952,833 | 4,397,809 | 195 | 1 |
+| Recursive CA-RSI | 17,077,146 | 205,193 | 17,282,339 | 15,319,543 | 769 | 1 |
+
+新方法的已记录输入加输出 token 达到 base 的 **3.49 倍**，此次没有带来 EM 提升或有效的 Meta 换版。
+用量条目不是供应商账单请求数，实际费用未返回，不估算金额。
+已落盘的失败调用用量保留；未落盘请求及服务端内部重试的消耗仍不可追溯，不能视为零。
+
+**运行中断与恢复。** 本机在 16:39–17:08 出现空闲睡眠，唤醒后两组各有一次 Worker 连接错误。
+base 使用 [`resume_meta_harness.py`](scripts/resume_meta_harness.py) 从未完成的第四轮恢复，
+递归模式按原规则拒绝不完整的 Meta 对照并继续后续轮次。
+原始失败记录未删除，base 原进程完整的单调计时未保存，因此总耗时不填为零，也不把这次墙钟耗时作为速度对比。
+
+本地运行标识：
+
+- Base：`meta_harness-miniagent-hotpotqa-20261128-163106-609439`
+- Recursive CA-RSI：`recursive_ca_rsi-miniagent-hotpotqa-20261128-163113-702609`
+
+复现配置分别为 [`meta_harness_hotpotqa_20261128.yaml`](configs/meta_harness_hotpotqa_20261128.yaml)
+和 [`recursive_ca_rsi_hotpotqa_20261128.yaml`](configs/recursive_ca_rsi_hotpotqa_20261128.yaml)。
+原始轨迹位于本地 `runs/study_20261128/`，交互可视化已自动更新并保留历史运行。
 
 ## 4. 后续实验变量与记录方式
 
