@@ -22,7 +22,7 @@
 
 实现依据：[`rule_audit.py`](../FlashRSI/flashrsi/agents/miniagent/runtime/rule_audit.py)、[`_mechanism.py`](../FlashRSI/flashrsi/algorithms/recursive_ca_rsi/_mechanism.py)、[`recursive_ca_rsi`](../FlashRSI/flashrsi/algorithms/recursive_ca_rsi/__init__.py)。专用[规则配置](../configs/recursive_ca_rsi_rule_audit.yaml)已关闭 Meta 自更新，但它不是已验证的新实验结果，也不能直接假设其 seed 43 数据与既往测试不重叠。
 
-已有[独立规则试验](../results/rule-audit-pilot-20261128/REPORT_CN.md)支持逗号规则的局部转换解释，包含模型预测与修复。其人工案例在已知问题后构造，历史输入是代理边界，不能充当下一阶段自然案例的完整证据。今日四轮运行接纳了未注册的中间件，且没有规则重放事件，见 [README 3.6](../README.md#36-同一-miniagent-起点下的-recursive-ca-rsi-与-base2026-11-28)。这应作为“修改未生效”的开发证据，不能再次算独立测试。
+已有[独立规则试验](../results/rule-audit-pilot-20261128/REPORT_CN.md)支持逗号规则的局部转换解释，包含模型预测与修复。其人工案例在已知问题后构造，历史输入是代理边界，不能充当下一阶段自然案例的完整证据。今日四轮运行接纳了未注册的中间件，且没有规则重放事件，见 [历史实验 3.6](archive/experiment-log-before-continuous-study-2026-11-28.md#36-同一-miniagent-起点下的-recursive-ca-rsi-与-base2026-11-28)。这应作为“修改未生效”的开发证据，不能再次算独立测试。
 
 ## 先完成一个真实案例
 
@@ -58,3 +58,5 @@
 第一里程碑是一个真实候选的完整证据链，包含事前预测、实际干预、反例检查、模型修复、四版本新题结果和成本。结果可以失败；不能以合理解释或离线测试通过代替真实证据。
 
 六页汇报按研究问题、方法流程、完整案例、定位结果、修复与成本、失败及下一步组织。当前可报告程序原型、受控测试和限定范围的独立规则试验；尚不能报告自然修改上的通用定位能力或递归更新收益。完成固定 Meta 的诊断机制验证后，再设计相同诊断机制下固定/自更新 Meta 的对照。
+
+最新执行范围见[连续候选协议](continuous-study-protocol.zh-CN.md)：自然案例阶段先收集 10 个实际候选，最多 20 次连续提议，保留失败；12 个受控案例的系统评测另行报告。

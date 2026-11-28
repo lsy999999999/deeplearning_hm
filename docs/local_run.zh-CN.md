@@ -130,7 +130,7 @@ Meta-Harness 不使用 `MAX_EDIT_UNITS` 和 `MAX_TASK_REGRESSIONS`，不会因�
 ```
 
 两份配置已包含 4 轮、同一模型与镜像；递归模式每轮预留 1 道 Meta 训练题，以兼容总训练题数 8。
-这两个命令会分别产生真实模型调用，既有实测结果见 README 第 3.6 节。
+这两个命令会分别产生真实模型调用，既有实测结果见 [历史实验记录第 3.6 节](archive/experiment-log-before-continuous-study-2026-11-28.md)。
 如果原版 Meta-Harness 在最终选择前中断，可保留原运行目录并恢复未完成步骤：
 
 ```bash
@@ -223,7 +223,7 @@ CA-RSI 在得分严格提高且退步数不超过门槛的组合中选最高分�
 .venv/bin/python scripts/export_evolution.py --register --run runs/某组实验/已完成的运行目录
 ```
 
-当前汇总包含两次历史单轮运行、昨日两次四轮运行，以及今日 base / Recursive CA-RSI 两次四轮运行，结果见 README 第 3.5、3.6 节。
+当前汇总包含两次历史单轮运行、昨日两次四轮运行，以及今日 base / Recursive CA-RSI 两次四轮运行，结果见 [历史实验记录](archive/experiment-log-before-continuous-study-2026-11-28.md)。
 首次没有历史索引时，从 README 对应的两份结果清单初始化，不混入早期排错。
 也可手动重新生成，默认读取已登记的运行，不调用模型：
 
@@ -288,3 +288,18 @@ docker build -t ca-rsi-runtime:local -f docker/runtime.Dockerfile docker
 当前产物支持实现和小规模真实流程验证，尚不足以证明方法有效。
 
 旧演示保留在 `results/evolution-view.html`，不再覆盖；最新汇总使用 `results/evolution-live.html`。
+
+
+## 连续自然候选的同候选对照
+
+本次固定 Meta 的 10 候选实验使用独立入口，三个策略共享候选和评估。参数、数据冻结、恢复限制及执行命令见[协议](continuous-study-protocol.zh-CN.md)，结果见[报告](../results/continuous-diagnosis-20261128/REPORT_CN.md)。原始 `runs/continuous_diagnosis_20261128` 已完成，禁止在同目录重新调用模型。
+
+从已有原始记录生成报告、选择图和追加日志，不调用模型：
+
+```bash
+.venv/bin/python scripts/report_continuous_diagnosis.py \
+  runs/continuous_diagnosis_20261128 \
+  --output results/continuous-diagnosis-20261128
+```
+
+该入口的通用评估缓存与原生 cache/target 布局不同，因此成本以报告脚本从 trajectories 重算的记录为准，未合入历史原生运行 CSV。新实验使用新目录；模型配置中的 128 题是候选池，最终冻结使用 8/40/40。

@@ -1,0 +1,63 @@
+# Pool 128; the study freezes 88 unexposed tasks before any call.
+run:
+  output_dir: ../runs/continuous_diagnosis_20261128
+benchmark:
+  name: hotpotqa
+  split: auto
+  mode: context
+  scoring: official
+  seed: 20261130
+  split_counts:
+    train: 8
+    dev: 60
+    test: 60
+  dataset:
+    source: hotpotqa/hotpot_qa
+    config: distractor
+    revision: 1908d6afbbead072334abe2965f91bd2709910ab
+    splits:
+    - validation
+agent:
+  name: miniagent
+  max_turns: 3
+  timeout: 300
+  llm:
+    model_name: DeepSeek-V4-Flash
+    api_key: null
+    llm_max_retries: 0
+    extra_body:
+      temperature: 0
+      thinking:
+        type: disabled
+    unlimited_output: false
+    reasoning_effort: none
+    max_tokens: 6500
+  container_image: ca-rsi-runtime:local
+algorithm:
+  name: recursive_ca_rsi
+  worker:
+    type: agent
+    name: miniagent
+    max_turns: 1
+    timeout: 180
+    llm:
+      model_name: DeepSeek-V4-Flash
+      api_key: null
+      llm_max_retries: 0
+      extra_body:
+        temperature: 0
+        thinking:
+          type: disabled
+      unlimited_output: false
+      reasoning_effort: none
+      max_tokens: 6500
+  max_steps: 1
+  max_edit_units: 3
+  max_task_regressions: 0
+  repair_attempts: 1
+  max_meta_edit_units: 3
+  meta_repeats: 2
+  meta_train_tasks_per_step: 2
+  meta_self_update: false
+  rule_verification: true
+  max_rule_cases: 16

@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="695" viewBox="0 0 1100 695">
+<rect width="1100" height="100%" fill="white"/>
+<style>text{font-family:system-ui,sans-serif;font-size:17px;fill:#243247}.h{font-size:24px;font-weight:600}</style>
+<text x="22" y="34" class="h">连续自然候选：同候选上的三种选择</text>
+<text x="22" y="65">每行是独立候选；A 原版 · B 候选 · D 验证后的修复。不是累积收益曲线。</text>
+<text x="22" y="96">候选</text><text x="180" y="96">原选择流程</text><text x="440" y="96">仅零退步门槛</text><text x="730" y="96">诊断验证与修复</text>
+<text x="22" y="125">#1 · c267a728</text>
+<rect x="172" y="103" width="240" height="43" rx="5" fill="#e7f5ef"/>
+<text x="180" y="125">B · 测试 4/4</text>
+<rect x="432" y="103" width="240" height="43" rx="5" fill="#e7f5ef"/>
+<text x="440" y="125">B · 测试 4/4</text>
+<rect x="722" y="103" width="240" height="43" rx="5" fill="#e7f5ef"/>
+<text x="730" y="125">B · 测试 4/4</text>
+<text x="22" y="183">#2 · e00ff4b2</text>
+<rect x="172" y="161" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="180" y="183">A · 测试 3/4</text>
+<rect x="432" y="161" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="440" y="183">A · 测试 3/4</text>
+<rect x="722" y="161" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="730" y="183">A · 测试 3/4</text>
+<text x="22" y="241">#3 · 55ac609e</text>
+<rect x="172" y="219" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="180" y="241">A · 测试 3/4</text>
+<rect x="432" y="219" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="440" y="241">A · 测试 3/4</text>
+<rect x="722" y="219" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="730" y="241">A · 测试 3/4</text>
+<text x="22" y="299">#4 · 33466780</text>
+<rect x="172" y="277" width="240" height="43" rx="5" fill="#e7f5ef"/>
+<text x="180" y="299">B · 测试 2/4</text>
+<rect x="432" y="277" width="240" height="43" rx="5" fill="#e7f5ef"/>
+<text x="440" y="299">B · 测试 2/4</text>
+<rect x="722" y="277" width="240" height="43" rx="5" fill="#e7f5ef"/>
+<text x="730" y="299">B · 测试 2/4</text>
+<text x="22" y="357">#5 · 77395462</text>
+<rect x="172" y="335" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="180" y="357">A · 测试 1/4</text>
+<rect x="432" y="335" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="440" y="357">A · 测试 1/4</text>
+<rect x="722" y="335" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="730" y="357">A · 测试 1/4</text>
+<text x="22" y="415">#6 · 6dd868a5</text>
+<rect x="172" y="393" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="180" y="415">A · 测试 1/4</text>
+<rect x="432" y="393" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="440" y="415">A · 测试 1/4</text>
+<rect x="722" y="393" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="730" y="415">A · 测试 1/4</text>
+<text x="22" y="473">#7 · 9fc13bcf</text>
+<rect x="172" y="451" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="180" y="473">A · 测试 3/4</text>
+<rect x="432" y="451" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="440" y="473">A · 测试 3/4</text>
+<rect x="722" y="451" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="730" y="473">A · 测试 3/4</text>
+<text x="22" y="531">#8 · 7006870e</text>
+<rect x="172" y="509" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="180" y="531">A · 测试 1/4</text>
+<rect x="432" y="509" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="440" y="531">A · 测试 1/4</text>
+<rect x="722" y="509" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="730" y="531">A · 测试 1/4</text>
+<text x="22" y="589">#9 · 55d1bd85</text>
+<rect x="172" y="567" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="180" y="589">A · 测试 1/4</text>
+<rect x="432" y="567" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="440" y="589">A · 测试 1/4</text>
+<rect x="722" y="567" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="730" y="589">A · 测试 1/4</text>
+<text x="22" y="647">#10 · 3c37a3b2</text>
+<rect x="172" y="625" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="180" y="647">A · 测试 3/4</text>
+<rect x="432" y="625" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="440" y="647">A · 测试 3/4</text>
+<rect x="722" y="625" width="240" height="43" rx="5" fill="#f1f5f9"/>
+<text x="730" y="647">A · 测试 3/4</text>
+<text x="22" y="687" style="font-size:14px">绿色表示采用修改，不代表测试获益；测试不参与选择。</text>
+</svg>

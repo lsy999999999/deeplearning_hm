@@ -22831,3 +22831,2436 @@ I was unable to complete the requested edit. No files were changed.
   "audit_rounds": 1
 }
 ```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/0/B:4932f43a9019cd64a3aef4b81af41d7c19a6e1f02f80911ae49539ee3ae85a09 -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/0/B -->
+
+## continuous-v1/continuous_diagnosis_20261128/0/B · 机器代码修改
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+轮次（从 0 开始）：0；阶段：shared_candidate_B；修改者：Meta；被修改对象：Task; fixed Meta, not self-update。
+
+差异比较起点：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef` → 候选版本：`c267a72888c89a8fe543568351136b0b23328e4ffa7f258476f549de648fa51d`。实际 Snapshot 父版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`（None 表示原始记录未提供或根版本）。
+
+此处仅记录提出的修改；是否采用见后续对应版本的决定条目。
+
+执行修改的 Worker：`miniagent`；模型：`DeepSeek-V4-Flash`；Worker 版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`。
+
+### continuous-v1/continuous_diagnosis_20261128/0/B.1 · `agent.yaml`
+
+操作：修改；组件：config。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/agent.yaml
++++ 候选/agent.yaml
+@@ -3,7 +3,8 @@
+   extract: prompts/extract.md
+ tools:
+   - shell
+-middlewares: []
++middlewares:
++  - answer_audit
+ skills:
+   - main
+ sub_agents: []
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/0/B.2 · `middleware/answer_audit.py`
+
+操作：新增；组件：code。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/middleware/answer_audit.py
++++ 候选/middleware/answer_audit.py
+@@ -0,0 +1,56 @@
++from runtime.rule_audit import Rule
++
++
++def _strip_meta_prefix(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    prefixes = (
++        "the answer is ",
++        "answer: ",
++        "short answer: ",
++        "it is ",
++        "this is ",
++    )
++    for prefix in prefixes:
++        if lowered.startswith(prefix):
++            text = text[len(prefix):].strip()
++            lowered = text.lower()
++            break
++    return text
++
++
++def _collapse_whitespace(answer, evidence):
++    return " ".join(answer.split())
++
++
++def _trim_trailing_punctuation(answer, evidence):
++    text = answer.rstrip()
++    while text and text[-1] in ".,;:!?":
++        text = text[:-1].rstrip()
++    return text
++
++
++def _strip_leading_article(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for article in ("the ", "a ", "an "):
++        if lowered.startswith(article) and len(text) > len(article):
++            return text[len(article):].strip()
++    return text
++
++
++AUDIT_RULES = [
++    Rule("strip_meta_prefix", _strip_meta_prefix),
++    Rule("collapse_whitespace", _collapse_whitespace),
++    Rule("trim_trailing_punctuation", _trim_trailing_punctuation),
++    Rule("strip_leading_article", _strip_leading_article),
++]
++
++
++async def before_final(answer, ctx):
++    result = ctx.apply_answer_rules(
++        answer, {"context": ctx.question}, AUDIT_RULES
++    )
++    if result != answer:
++        return {"action": "replace", "answer": result}
++    return {"action": "accept"}
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/0/B.3 · `skills/main.md`
+
+操作：修改；组件：skill。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/skills/main.md
++++ 候选/skills/main.md
+@@ -4,3 +4,9 @@
+ entity or value, check the supporting evidence, and answer concisely. Follow any
+ explicit output-format requirements. Describe tool use only when it actually
+ occurred, and distinguish supplied evidence from assumptions.
++
++When the question asks for a short answer, return only the minimal span that
++directly answers it (a name, place, date, or short phrase), not a full sentence
++or explanation. If the question asks for a specific attribute (e.g. a movement,
++a city, a person), give just that attribute value rather than restating the
++surrounding facts.
+
+```
+
+机器的完整原始说明：
+
+```text
+Training evidence shows a recurring answer-processing failure: the agent returns full sentences or partial spans instead of the short answer the prompt requests (e.g. 'National Socialist black metal is seen as a neo-völkisch movement within black metal.' vs 'neo-völkisch'; 'Chuck Schumer defeated Al D'Amato.' vs 'Al D'Amato'; 'Meghan Markle' vs 'Rachel Meghan Markle'). A reusable, entity-agnostic middleware can normalize the final answer: strip leading meta-phrases, collapse to the core span, and trim trailing punctuation, while preserving content. Rules are pure string transforms with no I/O, no hard-coded entities or task IDs.
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/0/selection:fe6bf50cb9f4c0559ec6bd86f9ffae96070a660f5eafd36fa98640a797251511 -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/0/selection -->
+
+## continuous-v1/continuous_diagnosis_20261128/0/selection · Task 选择或无修改决定
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+```text
+{
+  "step": 0,
+  "candidate_id": "c267a72888c89a8fe543568351136b0b23328e4ffa7f258476f549de648fa51d",
+  "selection": {
+    "base": "B",
+    "gate_only": "B",
+    "enhanced": "B",
+    "seed_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef"
+  },
+  "dev": {
+    "A": {
+      "em": 0.5,
+      "f1": 0.5833333333333334,
+      "n": 4,
+      "per_task": {
+        "5a8d0c1b5542994ba4e3dbb3": 1.0,
+        "5a7ee0d05542994959419a88": 0.0,
+        "5a90bb4e55429916514e7536": 1.0,
+        "5adf72095542992d7e9f935d": 0.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.75,
+      "f1": 0.75,
+      "n": 4,
+      "per_task": {
+        "5a8d0c1b5542994ba4e3dbb3": 1.0,
+        "5a7ee0d05542994959419a88": 1.0,
+        "5a90bb4e55429916514e7536": 1.0,
+        "5adf72095542992d7e9f935d": 0.0
+      },
+      "usable": true
+    }
+  },
+  "final_test_after_all_selections_frozen": {
+    "A": {
+      "em": 0.75,
+      "f1": 0.75,
+      "n": 4,
+      "per_task": {
+        "5ae164cf5542997b2ef7d1cd": 1.0,
+        "5a7cb8bc554299452d57b9be": 1.0,
+        "5ae3d0bb5542990afbd1e1e5": 1.0,
+        "5a8dff3f5542995085b37370": 0.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 1.0,
+      "f1": 1.0,
+      "n": 4,
+      "per_task": {
+        "5ae164cf5542997b2ef7d1cd": 1.0,
+        "5a7cb8bc554299452d57b9be": 1.0,
+        "5ae3d0bb5542990afbd1e1e5": 1.0,
+        "5a8dff3f5542995085b37370": 1.0
+      },
+      "usable": true
+    }
+  },
+  "valid_requests": 0,
+  "supported_harmful_requests": []
+}
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/1/B:34d57307fe484bee0e26c914c812032af648e137e63693e4209f759a66e9e277 -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/1/B -->
+
+## continuous-v1/continuous_diagnosis_20261128/1/B · 机器代码修改
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+轮次（从 0 开始）：1；阶段：shared_candidate_B；修改者：Meta；被修改对象：Task; fixed Meta, not self-update。
+
+差异比较起点：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef` → 候选版本：`e00ff4b253ef04dfe04bf976fc0206657f942227cc84c4d8fe41f5d6ec68870d`。实际 Snapshot 父版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`（None 表示原始记录未提供或根版本）。
+
+此处仅记录提出的修改；是否采用见后续对应版本的决定条目。
+
+执行修改的 Worker：`miniagent`；模型：`DeepSeek-V4-Flash`；Worker 版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`。
+
+### continuous-v1/continuous_diagnosis_20261128/1/B.1 · `agent.yaml`
+
+操作：修改；组件：config。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/agent.yaml
++++ 候选/agent.yaml
+@@ -3,7 +3,8 @@
+   extract: prompts/extract.md
+ tools:
+   - shell
+-middlewares: []
++middlewares:
++  - answer_audit
+ skills:
+   - main
+ sub_agents: []
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/1/B.2 · `middleware/answer_audit.py`
+
+操作：新增；组件：code。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/middleware/answer_audit.py
++++ 候选/middleware/answer_audit.py
+@@ -0,0 +1,82 @@
++import re
++
++from runtime.rule_audit import Rule
++
++
++_META_PREFIXES = (
++    "the answer is",
++    "answer:",
++    "short answer:",
++    "final answer:",
++    "it is",
++    "this is",
++    "that is",
++)
++
++_LEADING_ARTICLES = ("the ", "a ", "an ")
++
++
++def _strip_meta_prefix(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for prefix in _META_PREFIXES:
++        if lowered.startswith(prefix):
++            text = text[len(prefix):].lstrip(" :\t")
++            lowered = text.lower()
++    return text
++
++
++def _extract_core_span(answer, evidence):
++    text = answer.strip()
++    if not text:
++        return text
++    # If a full sentence is returned, prefer the object of a relational clause.
++    patterns = (
++        r"\bdefeated\s+(.+?)[.!?]*$",
++        r"\bportrays?\s+(.+?)[.!?]*$",
++        r"\bplayed by\s+(.+?)[.!?]*$",
++        r"\bheld by\s+(.+?)[.!?]*$",
++        r"\bseen as\s+(?:an?\s+)?(.+?)[.!?]*$",
++        r"\blocated (?:in|on|at)\s+(.+?)[.!?]*$",
++    )
++    for pattern in patterns:
++        match = re.search(pattern, text, flags=re.IGNORECASE)
++        if match:
++            candidate = match.group(1).strip()
++            if candidate:
++                return candidate
++    return text
++
++
++def _normalize_whitespace(answer, evidence):
++    text = re.sub(r"\s+", " ", answer).strip()
++    text = text.rstrip(" .,;:")
++    return text
++
++
++def _strip_leading_article(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for article in _LEADING_ARTICLES:
++        if lowered.startswith(article):
++            trimmed = text[len(article):].strip()
++            if trimmed:
++                return trimmed
++    return text
++
++
++AUDIT_RULES = [
++    Rule("strip_meta_prefix", _strip_meta_prefix),
++    Rule("extract_core_span", _extract_core_span),
++    Rule("normalize_whitespace", _normalize_whitespace),
++    Rule("strip_leading_article", _strip_leading_article),
++]
++
++
++async def before_final(answer, ctx):
++    result = ctx.apply_answer_rules(
++        answer, {"context": ctx.question}, AUDIT_RULES
++    )
++    if result != answer:
++        return {"action": "replace", "answer": result}
++    return {"action": "accept"}
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/1/B.3 · `skills/main.md`
+
+操作：修改；组件：skill。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/skills/main.md
++++ 候选/skills/main.md
+@@ -4,3 +4,9 @@
+ entity or value, check the supporting evidence, and answer concisely. Follow any
+ explicit output-format requirements. Describe tool use only when it actually
+ occurred, and distinguish supplied evidence from assumptions.
++
++When the question asks for a short answer, return only the minimal span that
++directly answers it: the entity or value itself, not a full sentence and not a
++restatement of the question. Do not add lead-in phrases such as "The answer is"
++or explanatory clauses. Preserve the exact wording of the supporting evidence
++for the requested span.
+
+```
+
+机器的完整原始说明：
+
+```text
+Training evidence shows the dominant answer-processing failure is not wrong entity selection but answer formatting: the agent returns full sentences or over-long spans when the prompt asks for 'only the short answer' (e.g. 'National Socialist black metal is seen as a neo-völkisch movement within black metal.' vs 'neo-völkisch'; 'Chuck Schumer defeated Al D'Amato.' vs 'Al D'Amato'). The prior proposal's audit rules were largely inactive on these cases. This proposal adds a small, ordered, pure-string AUDIT_RULES pipeline that (1) strips common meta/lead-in phrases, (2) extracts the object of 'defeated/portrays/held by' style clauses when a sentence is returned, (3) collapses whitespace and trims trailing punctuation, and (4) removes a leading article. All rules are entity-agnostic, deterministic, no I/O, no hard-coded answers or task IDs, and preserve useful content. The skill prompt is tightened to reinforce minimal-span answers. Only agent.yaml, one middleware module, and skills/main.md are changed.
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/1/selection:84b423aa5086f4c9821918a072f84ae4b9aa0b10c644e4e261f753b92c6bddc1 -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/1/selection -->
+
+## continuous-v1/continuous_diagnosis_20261128/1/selection · Task 选择或无修改决定
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+```text
+{
+  "step": 1,
+  "candidate_id": "e00ff4b253ef04dfe04bf976fc0206657f942227cc84c4d8fe41f5d6ec68870d",
+  "selection": {
+    "base": "A",
+    "gate_only": "A",
+    "enhanced": "A",
+    "seed_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef"
+  },
+  "dev": {
+    "A": {
+      "em": 0.75,
+      "f1": 0.75,
+      "n": 4,
+      "per_task": {
+        "5adc8c545542994734353734": 1.0,
+        "5a80abd15542996402f6a5e0": 1.0,
+        "5ac2ffe7554299218029dbb3": 1.0,
+        "5ac047a3554299294b218f70": 0.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.75,
+      "f1": 0.75,
+      "n": 4,
+      "per_task": {
+        "5adc8c545542994734353734": 1.0,
+        "5a80abd15542996402f6a5e0": 1.0,
+        "5ac2ffe7554299218029dbb3": 1.0,
+        "5ac047a3554299294b218f70": 0.0
+      },
+      "usable": true
+    }
+  },
+  "final_test_after_all_selections_frozen": {
+    "A": {
+      "em": 0.75,
+      "f1": 0.95,
+      "n": 4,
+      "per_task": {
+        "5ab4304a55429942dd415ec5": 1.0,
+        "5a76244c554299109176e65d": 1.0,
+        "5a7136e25542994082a3e67e": 0.0,
+        "5a7ff71a5542992e7d278dd0": 1.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.75,
+      "f1": 0.95,
+      "n": 4,
+      "per_task": {
+        "5ab4304a55429942dd415ec5": 1.0,
+        "5a76244c554299109176e65d": 1.0,
+        "5a7136e25542994082a3e67e": 0.0,
+        "5a7ff71a5542992e7d278dd0": 1.0
+      },
+      "usable": true
+    }
+  },
+  "valid_requests": 0,
+  "supported_harmful_requests": []
+}
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/2/B:ddfdd96f80016119293dcb4160775ef0e591177b2a8ad26c4e59be053204a635 -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/2/B -->
+
+## continuous-v1/continuous_diagnosis_20261128/2/B · 机器代码修改
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+轮次（从 0 开始）：2；阶段：shared_candidate_B；修改者：Meta；被修改对象：Task; fixed Meta, not self-update。
+
+差异比较起点：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef` → 候选版本：`55ac609ee67d21b9dd2a529d4459e26eed38afdddeeaa39369d1394ce7b71914`。实际 Snapshot 父版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`（None 表示原始记录未提供或根版本）。
+
+此处仅记录提出的修改；是否采用见后续对应版本的决定条目。
+
+执行修改的 Worker：`miniagent`；模型：`DeepSeek-V4-Flash`；Worker 版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`。
+
+### continuous-v1/continuous_diagnosis_20261128/2/B.1 · `agent.yaml`
+
+操作：修改；组件：config。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/agent.yaml
++++ 候选/agent.yaml
+@@ -3,7 +3,8 @@
+   extract: prompts/extract.md
+ tools:
+   - shell
+-middlewares: []
++middlewares:
++  - answer_audit
+ skills:
+   - main
+ sub_agents: []
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/2/B.2 · `middleware/answer_audit.py`
+
+操作：新增；组件：code。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/middleware/answer_audit.py
++++ 候选/middleware/answer_audit.py
+@@ -0,0 +1,92 @@
++"""Answer-processing audit middleware.
++
++Applies a small, ordered pipeline of pure string transforms to the final
++answer so that short-answer tasks receive a minimal span rather than a full
++sentence. All rules are deterministic, entity-agnostic, and perform no I/O.
++"""
++
++import re
++
++from runtime.rule_audit import Rule
++
++
++# Common lead-in / meta phrases that add no answer content.
++_META_PREFIXES = (
++    "the answer is",
++    "answer:",
++    "final answer:",
++    "short answer:",
++    "it is",
++    "this is",
++    "that is",
++    "based on the context,",
++    "according to the context,",
++)
++
++# Relational verbs whose object is typically the requested short answer.
++_RELATIONAL = re.compile(
++    r"\b(?:defeated|portrays?|played by|held by|won by|created by|written by|"
++    r"directed by|produced by|located in|part of|known as|seen as)\b",
++    re.IGNORECASE,
++)
++
++_LEADING_ARTICLES = ("the ", "a ", "an ")
++
++
++def _strip_meta_prefix(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for prefix in _META_PREFIXES:
++        if lowered.startswith(prefix):
++            text = text[len(prefix):].lstrip(" :,-\u2013\u2014")
++            break
++    return text
++
++
++def _extract_core_span(answer, evidence):
++    text = answer.strip()
++    # Only act on sentence-like answers; leave short spans untouched.
++    if len(text.split()) <= 4 or not text.endswith((".", "!", "?")):
++        return text
++    match = _RELATIONAL.search(text)
++    if not match:
++        return text
++    tail = text[match.end():].strip(" .,;:!?")
++    # Drop a leading article from the extracted object.
++    lowered = tail.lower()
++    for article in _LEADING_ARTICLES:
++        if lowered.startswith(article):
++            tail = tail[len(article):]
++            break
++    return tail if tail else text
++
++
++def _normalize_whitespace(answer, evidence):
++    text = re.sub(r"\s+", " ", answer).strip()
++    return text.rstrip(" .,;:")
++
++
++def _strip_leading_article(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for article in _LEADING_ARTICLES:
++        if lowered.startswith(article):
++            return text[len(article):]
++    return text
++
++
++AUDIT_RULES = [
++    Rule("strip_meta_prefix", _strip_meta_prefix),
++    Rule("extract_core_span", _extract_core_span),
++    Rule("normalize_whitespace", _normalize_whitespace),
++    Rule("strip_leading_article", _strip_leading_article),
++]
++
++
++async def before_final(answer, ctx):
++    result = ctx.apply_answer_rules(
++        answer, {"context": ctx.question}, AUDIT_RULES
++    )
++    if result != answer:
++        return {"action": "replace", "answer": result}
++    return {"action": "accept"}
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/2/B.3 · `skills/main.md`
+
+操作：修改；组件：skill。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/skills/main.md
++++ 候选/skills/main.md
+@@ -4,3 +4,9 @@
+ entity or value, check the supporting evidence, and answer concisely. Follow any
+ explicit output-format requirements. Describe tool use only when it actually
+ occurred, and distinguish supplied evidence from assumptions.
++
++When the question asks for a short answer, return only the minimal span that
++answers it: the entity or value itself, not a full sentence and not a
++restatement of the question. Do not add lead-in phrases such as "The answer
++is" or explanatory clauses. Preserve the exact wording of the supporting
++evidence for the requested entity.
+
+```
+
+机器的完整原始说明：
+
+```text
+The supplied training evidence shows the dominant answer-processing failure is formatting/span selection, not missing knowledge: the agent returns full sentences or over-long spans when the prompt asks for 'only the short answer' (e.g. 'National Socialist black metal is seen as a neo-völkisch movement within black metal.' vs 'neo-völkisch'; 'Chuck Schumer defeated Al D'Amato.' vs 'Al D'Amato'). Prior proposals' audit rules were largely inactive on these outputs. This proposal keeps a small, ordered, pure-string AUDIT_RULES pipeline that (1) strips common meta/lead-in phrases, (2) extracts the object of relational clauses like 'defeated/portrays/held by' when a full sentence is returned, (3) collapses whitespace and trims trailing punctuation, and (4) removes a leading article. All rules are entity-agnostic, deterministic, no I/O, no hard-coded answers or task IDs, and preserve useful content. The skill prompt is tightened to reinforce minimal-span answers. Only agent.yaml, one middleware module, and skills/main.md are changed.
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/2/selection:9622008e8ca290544acb675a11af2fa702c511b80d87c0b66f20109fae51c650 -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/2/selection -->
+
+## continuous-v1/continuous_diagnosis_20261128/2/selection · Task 选择或无修改决定
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+```text
+{
+  "step": 2,
+  "candidate_id": "55ac609ee67d21b9dd2a529d4459e26eed38afdddeeaa39369d1394ce7b71914",
+  "selection": {
+    "base": "A",
+    "gate_only": "A",
+    "enhanced": "A",
+    "seed_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef"
+  },
+  "dev": {
+    "A": {
+      "em": 0.75,
+      "f1": 0.8333333333333334,
+      "n": 4,
+      "per_task": {
+        "5ae5d82f554299546bf82f9a": 1.0,
+        "5ae4c01e55429913cc2044f3": 1.0,
+        "5ab965bb554299743d22eb56": 1.0,
+        "5a7be5bd5542997c3ec972ba": 0.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.75,
+      "f1": 0.8333333333333334,
+      "n": 4,
+      "per_task": {
+        "5ae5d82f554299546bf82f9a": 1.0,
+        "5ae4c01e55429913cc2044f3": 1.0,
+        "5ab965bb554299743d22eb56": 1.0,
+        "5a7be5bd5542997c3ec972ba": 0.0
+      },
+      "usable": true
+    }
+  },
+  "final_test_after_all_selections_frozen": {
+    "A": {
+      "em": 0.75,
+      "f1": 0.9166666666666666,
+      "n": 4,
+      "per_task": {
+        "5a776fc15542997042120a3a": 1.0,
+        "5adf4da15542995534e8c780": 1.0,
+        "5adc9d145542994d58a2f67d": 0.0,
+        "5ab8f33155429919ba4e237f": 1.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.75,
+      "f1": 0.75,
+      "n": 4,
+      "per_task": {
+        "5a776fc15542997042120a3a": 1.0,
+        "5adf4da15542995534e8c780": 1.0,
+        "5adc9d145542994d58a2f67d": 0.0,
+        "5ab8f33155429919ba4e237f": 1.0
+      },
+      "usable": true
+    }
+  },
+  "valid_requests": 0,
+  "supported_harmful_requests": []
+}
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/3/B:68bb588ccbe878b500238eb36078ed23e9aa54726af1f44ac8e1173623c878b4 -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/3/B -->
+
+## continuous-v1/continuous_diagnosis_20261128/3/B · 机器代码修改
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+轮次（从 0 开始）：3；阶段：shared_candidate_B；修改者：Meta；被修改对象：Task; fixed Meta, not self-update。
+
+差异比较起点：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef` → 候选版本：`33466780569b9ae52544a76290c7dccf245282c6c6343fdb27e505eb6f572fce`。实际 Snapshot 父版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`（None 表示原始记录未提供或根版本）。
+
+此处仅记录提出的修改；是否采用见后续对应版本的决定条目。
+
+执行修改的 Worker：`miniagent`；模型：`DeepSeek-V4-Flash`；Worker 版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`。
+
+### continuous-v1/continuous_diagnosis_20261128/3/B.1 · `agent.yaml`
+
+操作：修改；组件：config。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/agent.yaml
++++ 候选/agent.yaml
+@@ -3,7 +3,8 @@
+   extract: prompts/extract.md
+ tools:
+   - shell
+-middlewares: []
++middlewares:
++  - answer_audit
+ skills:
+   - main
+ sub_agents: []
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/3/B.2 · `middleware/answer_audit.py`
+
+操作：新增；组件：code。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/middleware/answer_audit.py
++++ 候选/middleware/answer_audit.py
+@@ -0,0 +1,97 @@
++"""Deterministic answer-processing middleware.
++
++Applies a small ordered pipeline of pure string transforms to the final
++answer so that short-answer tasks receive a minimal span instead of a full
++sentence or an over-long phrase. All rules are entity-agnostic, have no I/O,
++model calls or randomness, and preserve useful answer content.
++"""
++
++import re
++
++from runtime.rule_audit import Rule
++
++
++# Common lead-in / meta phrases that wrap the actual answer.
++_META_PREFIXES = (
++    "the answer is",
++    "the short answer is",
++    "answer:",
++    "short answer:",
++    "it is",
++    "it was",
++    "this is",
++    "this was",
++    "based on the context,",
++    "based on the supplied context,",
++    "according to the context,",
++    "according to the supplied context,",
++)
++
++# Relational verbs whose object is usually the requested entity.
++_RELATIONAL = re.compile(
++    r"\b(?:defeated|portrays|portrayed|played|plays|held|holds|won|wins|"
++    r"created|creates|founded|founds|directed|directs|written by|written|"
++    r"starring|stars|located in|located on|situated in|situated on|"
++    r"part of|member of|known as|seen as|referred to as)\b",
++    re.IGNORECASE,
++)
++
++_LEADING_ARTICLES = ("the ", "a ", "an ")
++
++
++def _strip_meta_prefix(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for prefix in _META_PREFIXES:
++        if lowered.startswith(prefix):
++            text = text[len(prefix):].lstrip(" :-\u2013\u2014")
++            lowered = text.lower()
++    return text
++
++
++def _extract_core_span(answer, evidence):
++    text = answer.strip()
++    # Only act on sentence-like answers; leave short spans untouched.
++    if len(text.split()) <= 4 or not text.endswith((".", "!", "?")):
++        return text
++    body = text.rstrip(".!? ").strip()
++    match = _RELATIONAL.search(body)
++    if not match:
++        return text
++    tail = body[match.end():].strip(" ,;:\u2013\u2014")
++    if not tail:
++        return text
++    # Drop a trailing subordinate clause introduced by a comma.
++    tail = tail.split(",")[0].strip()
++    return tail if tail else text
++
++
++def _normalize_whitespace(answer, evidence):
++    text = re.sub(r"\s+", " ", answer).strip()
++    return text.rstrip(" .,;:\u2013\u2014")
++
++
++def _strip_leading_article(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for article in _LEADING_ARTICLES:
++        if lowered.startswith(article) and len(text) > len(article):
++            return text[len(article):].lstrip()
++    return text
++
++
++AUDIT_RULES = [
++    Rule("strip_meta_prefix", _strip_meta_prefix),
++    Rule("extract_core_span", _extract_core_span),
++    Rule("normalize_whitespace", _normalize_whitespace),
++    Rule("strip_leading_article", _strip_leading_article),
++]
++
++
++async def before_final(answer, ctx):
++    result = ctx.apply_answer_rules(
++        answer, {"context": ctx.question}, AUDIT_RULES
++    )
++    if result != answer:
++        return {"action": "replace", "answer": result}
++    return {"action": "accept"}
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/3/B.3 · `skills/main.md`
+
+操作：修改；组件：skill。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/skills/main.md
++++ 候选/skills/main.md
+@@ -4,3 +4,11 @@
+ entity or value, check the supporting evidence, and answer concisely. Follow any
+ explicit output-format requirements. Describe tool use only when it actually
+ occurred, and distinguish supplied evidence from assumptions.
++
++## Answer format
++
++When the question asks for a short answer, return only the minimal span that
++answers it: the entity or value itself, not a full sentence, explanation or
++restatement of the question. Do not add lead-in phrases such as "The answer
++is" or "Based on the context". Do not include trailing punctuation. Preserve
++the exact wording of the supporting evidence for the span you return.
+
+```
+
+机器的完整原始说明：
+
+```text
+The supplied training evidence shows the dominant answer-processing failure is formatting/span selection, not missing knowledge: the agent returns full sentences or over-long spans when the prompt asks for 'only the short answer' (e.g. 'National Socialist black metal is seen as a neo-völkisch movement within black metal.' vs 'neo-völkisch'; 'Chuck Schumer defeated Al D'Amato.' vs 'Al D'Amato'). Prior proposals' audit rules were largely inactive on these outputs. This proposal keeps a small, ordered, pure-string AUDIT_RULES pipeline that (1) strips common meta/lead-in phrases, (2) extracts the object of relational clauses like 'defeated/portrays/held by' when a full sentence is returned, (3) collapses whitespace and trims trailing punctuation, and (4) removes a leading article. All rules are entity-agnostic, deterministic, no I/O, no hard-coded answers or task IDs, and preserve useful content. The skill prompt is tightened to reinforce minimal-span answers. Only agent.yaml, one middleware module, and skills/main.md are changed.
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/3/selection:5c116ff515c516f953f8e94429f76cffa412bef9ce7d2a9cd8b60dee47b17c99 -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/3/selection -->
+
+## continuous-v1/continuous_diagnosis_20261128/3/selection · Task 选择或无修改决定
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+```text
+{
+  "step": 3,
+  "candidate_id": "33466780569b9ae52544a76290c7dccf245282c6c6343fdb27e505eb6f572fce",
+  "selection": {
+    "base": "B",
+    "gate_only": "B",
+    "enhanced": "B",
+    "seed_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef"
+  },
+  "dev": {
+    "A": {
+      "em": 0.5,
+      "f1": 0.803030303030303,
+      "n": 4,
+      "per_task": {
+        "5ab299d6554299449642c926": 0.0,
+        "5ab819065542995dae37ea3c": 0.0,
+        "5ab2f45d5542991669774151": 1.0,
+        "5a8a40015542996c9b8d5e72": 1.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.75,
+      "f1": 0.9166666666666666,
+      "n": 4,
+      "per_task": {
+        "5ab299d6554299449642c926": 1.0,
+        "5ab819065542995dae37ea3c": 0.0,
+        "5ab2f45d5542991669774151": 1.0,
+        "5a8a40015542996c9b8d5e72": 1.0
+      },
+      "usable": true
+    }
+  },
+  "final_test_after_all_selections_frozen": {
+    "A": {
+      "em": 0.5,
+      "f1": 0.9,
+      "n": 4,
+      "per_task": {
+        "5a734f4455429901807dafba": 0.0,
+        "5a78f26055429970f5fffdeb": 0.0,
+        "5a7a0201554299029c4b5f9e": 1.0,
+        "5ae676915542995703ce8b66": 1.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.5,
+      "f1": 0.9,
+      "n": 4,
+      "per_task": {
+        "5a734f4455429901807dafba": 0.0,
+        "5a78f26055429970f5fffdeb": 0.0,
+        "5a7a0201554299029c4b5f9e": 1.0,
+        "5ae676915542995703ce8b66": 1.0
+      },
+      "usable": true
+    }
+  },
+  "valid_requests": 0,
+  "supported_harmful_requests": []
+}
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/4/B:13aae3bb6e691836ea8b0046c50e336beffa48879504b1bbf4ea76471d7c6940 -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/4/B -->
+
+## continuous-v1/continuous_diagnosis_20261128/4/B · 机器代码修改
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+轮次（从 0 开始）：4；阶段：shared_candidate_B；修改者：Meta；被修改对象：Task; fixed Meta, not self-update。
+
+差异比较起点：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef` → 候选版本：`7739546209b116d53b8a18824bacb3e780e6d804a012110119aea00859978985`。实际 Snapshot 父版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`（None 表示原始记录未提供或根版本）。
+
+此处仅记录提出的修改；是否采用见后续对应版本的决定条目。
+
+执行修改的 Worker：`miniagent`；模型：`DeepSeek-V4-Flash`；Worker 版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`。
+
+### continuous-v1/continuous_diagnosis_20261128/4/B.1 · `agent.yaml`
+
+操作：修改；组件：config。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/agent.yaml
++++ 候选/agent.yaml
+@@ -3,7 +3,8 @@
+   extract: prompts/extract.md
+ tools:
+   - shell
+-middlewares: []
++middlewares:
++  - answer_audit
+ skills:
+   - main
+ sub_agents: []
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/4/B.2 · `middleware/answer_audit.py`
+
+操作：新增；组件：code。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/middleware/answer_audit.py
++++ 候选/middleware/answer_audit.py
+@@ -0,0 +1,93 @@
++"""Deterministic answer-audit middleware.
++
++Applies a small, ordered pipeline of pure string transforms to the final
++answer so that short-answer tasks receive a minimal span rather than a full
++sentence or a meta-prefixed phrase. No I/O, no model calls, no randomness,
++no hard-coded entities or task IDs.
++"""
++
++import re
++
++from runtime.rule_audit import Rule
++
++
++# Common lead-in phrases that add no answer content.
++_META_PREFIXES = (
++    "the answer is",
++    "the short answer is",
++    "answer:",
++    "short answer:",
++    "it is",
++    "it was",
++    "this is",
++    "that is",
++    "based on the context,",
++    "based on the provided context,",
++    "according to the context,",
++    "according to the provided context,",
++)
++
++_LEADING_ARTICLES = ("the ", "a ", "an ")
++
++
++def _strip_meta_prefix(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for prefix in _META_PREFIXES:
++        if lowered.startswith(prefix):
++            text = text[len(prefix):].lstrip(" :,-\t")
++            lowered = text.lower()
++    return text
++
++
++def _normalize_whitespace(answer, evidence):
++    text = re.sub(r"\s+", " ", answer).strip()
++    # Trim trailing sentence punctuation but keep internal punctuation.
++    text = text.rstrip(" .;:!?\t\n")
++    return text
++
++
++def _strip_leading_article(answer, evidence):
++    lowered = answer.lower()
++    for article in _LEADING_ARTICLES:
++        if lowered.startswith(article):
++            candidate = answer[len(article):].lstrip()
++            # Only strip if something meaningful remains.
++            if candidate:
++                return candidate
++    return answer
++
++
++def _trim_trailing_clause(answer, evidence):
++    """Drop a trailing explanatory clause from a full-sentence answer.
++
++    Only fires when the answer looks like a sentence (contains a comma and
++    more than a few words) so that short comma-bearing answers such as
++    'Melbourne, Australia' are preserved.
++    """
++    if "," not in answer:
++        return answer
++    words = answer.split()
++    if len(words) < 6:
++        return answer
++    head = answer.split(",", 1)[0].strip()
++    if head and len(head.split()) >= 2:
++        return head
++    return answer
++
++
++AUDIT_RULES = [
++    Rule("strip_meta_prefix", _strip_meta_prefix),
++    Rule("normalize_whitespace", _normalize_whitespace),
++    Rule("strip_leading_article", _strip_leading_article),
++    Rule("trim_trailing_clause", _trim_trailing_clause),
++]
++
++
++async def before_final(answer, ctx):
++    result = ctx.apply_answer_rules(
++        answer, {"context": ctx.question}, AUDIT_RULES
++    )
++    if result != answer:
++        return {"action": "replace", "answer": result}
++    return {"action": "accept"}
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/4/B.3 · `skills/main.md`
+
+操作：修改；组件：skill。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/skills/main.md
++++ 候选/skills/main.md
+@@ -4,3 +4,11 @@
+ entity or value, check the supporting evidence, and answer concisely. Follow any
+ explicit output-format requirements. Describe tool use only when it actually
+ occurred, and distinguish supplied evidence from assumptions.
++
++## Answer format
++
++When the question asks for a short answer, return only the minimal span that
++answers it: the entity, name, date, number, or short phrase. Do not wrap the
++answer in a full sentence, do not restate the question, and do not add
++explanatory clauses. Preserve the exact wording used in the supporting evidence
++for the requested entity.
+
+```
+
+机器的完整原始说明：
+
+```text
+The training evidence shows the dominant answer-processing failure is formatting/span selection, not missing knowledge: the agent returns full sentences or over-long spans when the prompt asks for 'only the short answer' (e.g. 'National Socialist black metal is seen as a neo-völkisch movement within black metal.' vs 'neo-völkisch'; 'Chuck Schumer defeated Al D'Amato.' vs 'Al D'Amato'). Prior proposals' relational-clause extraction was shown to be harmful (it truncated 'Chuck Schumer defeated Al D'Amato.' to just 'Chuck Schumer', F1 0.571->0.0). This proposal avoids any subject/object extraction. Instead it uses a conservative, ordered, pure-string AUDIT_RULES pipeline that only (1) strips common meta/lead-in phrases, (2) collapses whitespace and trims trailing punctuation, (3) removes a leading article, and (4) trims a trailing explanatory clause after a comma only when the answer is a full sentence. All rules are entity-agnostic, deterministic, no I/O, no hard-coded answers or task IDs, and preserve useful content. The skill prompt is tightened to reinforce minimal-span answers. Only agent.yaml, one middleware module, and skills/main.md are changed.
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/4/selection:9483966b8aba205f0988725bf15358fe680ecd6cf6647227c464db04bd694dcd -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/4/selection -->
+
+## continuous-v1/continuous_diagnosis_20261128/4/selection · Task 选择或无修改决定
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+```text
+{
+  "step": 4,
+  "candidate_id": "7739546209b116d53b8a18824bacb3e780e6d804a012110119aea00859978985",
+  "selection": {
+    "base": "A",
+    "gate_only": "A",
+    "enhanced": "A",
+    "seed_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef"
+  },
+  "dev": {
+    "A": {
+      "em": 0.75,
+      "f1": 0.9722222222222222,
+      "n": 4,
+      "per_task": {
+        "5add39ca5542992ae4cec4fb": 1.0,
+        "5a89e92c5542993b751ca9af": 0.0,
+        "5a7e1cd955429965cec5ea76": 1.0,
+        "5ab7268b5542992aa3b8c7b1": 1.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.75,
+      "f1": 0.9166666666666666,
+      "n": 4,
+      "per_task": {
+        "5add39ca5542992ae4cec4fb": 0.0,
+        "5a89e92c5542993b751ca9af": 1.0,
+        "5a7e1cd955429965cec5ea76": 1.0,
+        "5ab7268b5542992aa3b8c7b1": 1.0
+      },
+      "usable": true
+    }
+  },
+  "final_test_after_all_selections_frozen": {
+    "A": {
+      "em": 0.25,
+      "f1": 0.5409090909090909,
+      "n": 4,
+      "per_task": {
+        "5abcedb355429959677d6b4f": 0.0,
+        "5a74872655429979e2882978": 1.0,
+        "5ac514d05542994611c8b372": 0.0,
+        "5aba9db7554299232ef4a361": 0.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.25,
+      "f1": 0.5409090909090909,
+      "n": 4,
+      "per_task": {
+        "5abcedb355429959677d6b4f": 0.0,
+        "5a74872655429979e2882978": 1.0,
+        "5ac514d05542994611c8b372": 0.0,
+        "5aba9db7554299232ef4a361": 0.0
+      },
+      "usable": true
+    }
+  },
+  "valid_requests": 0,
+  "supported_harmful_requests": []
+}
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/5/B:b3c2c9c87917263d488dec0d99337a4425e7a91954f173d4274b3661c348356e -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/5/B -->
+
+## continuous-v1/continuous_diagnosis_20261128/5/B · 机器代码修改
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+轮次（从 0 开始）：5；阶段：shared_candidate_B；修改者：Meta；被修改对象：Task; fixed Meta, not self-update。
+
+差异比较起点：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef` → 候选版本：`6dd868a544ce4df0b9b61599169fc8982128752026a6dd5419a02acc4d357686`。实际 Snapshot 父版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`（None 表示原始记录未提供或根版本）。
+
+此处仅记录提出的修改；是否采用见后续对应版本的决定条目。
+
+执行修改的 Worker：`miniagent`；模型：`DeepSeek-V4-Flash`；Worker 版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`。
+
+### continuous-v1/continuous_diagnosis_20261128/5/B.1 · `agent.yaml`
+
+操作：修改；组件：config。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/agent.yaml
++++ 候选/agent.yaml
+@@ -3,7 +3,8 @@
+   extract: prompts/extract.md
+ tools:
+   - shell
+-middlewares: []
++middlewares:
++  - answer_audit
+ skills:
+   - main
+ sub_agents: []
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/5/B.2 · `middleware/answer_audit.py`
+
+操作：新增；组件：code。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/middleware/answer_audit.py
++++ 候选/middleware/answer_audit.py
+@@ -0,0 +1,78 @@
++from runtime.rule_audit import Rule
++
++import re
++
++
++_META_PREFIXES = (
++    "the answer is",
++    "the short answer is",
++    "answer:",
++    "short answer:",
++    "it is",
++    "it was",
++    "this is",
++    "that is",
++    "based on the context,",
++    "according to the context,",
++)
++
++_LEADING_ARTICLES = ("the ", "a ", "an ")
++
++
++def _strip_meta_prefix(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for prefix in _META_PREFIXES:
++        if lowered.startswith(prefix):
++            text = text[len(prefix):].lstrip()
++            lowered = text.lower()
++    return text
++
++
++def _normalize_whitespace(answer, evidence):
++    text = re.sub(r"\s+", " ", answer).strip()
++    text = text.rstrip(" .,;:")
++    return text
++
++
++def _strip_leading_article(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for article in _LEADING_ARTICLES:
++        if lowered.startswith(article):
++            candidate = text[len(article):].lstrip()
++            if candidate:
++                return candidate
++    return text
++
++
++def _trim_trailing_clause(answer, evidence):
++    text = answer.strip()
++    if not text:
++        return text
++    words = text.split()
++    if len(words) < 6:
++        return text
++    if "," not in text:
++        return text
++    head = text.split(",", 1)[0].strip()
++    if head and len(head.split()) >= 2:
++        return head
++    return text
++
++
++AUDIT_RULES = [
++    Rule("strip_meta_prefix", _strip_meta_prefix),
++    Rule("normalize_whitespace", _normalize_whitespace),
++    Rule("strip_leading_article", _strip_leading_article),
++    Rule("trim_trailing_clause", _trim_trailing_clause),
++]
++
++
++async def before_final(answer, ctx):
++    result = ctx.apply_answer_rules(
++        answer, {"context": ctx.question}, AUDIT_RULES
++    )
++    if result != answer:
++        return {"action": "replace", "answer": result}
++    return {"action": "accept"}
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/5/B.3 · `skills/main.md`
+
+操作：修改；组件：skill。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/skills/main.md
++++ 候选/skills/main.md
+@@ -4,3 +4,10 @@
+ entity or value, check the supporting evidence, and answer concisely. Follow any
+ explicit output-format requirements. Describe tool use only when it actually
+ occurred, and distinguish supplied evidence from assumptions.
++
++When the question asks for a short answer, return only the minimal span that
++directly answers it: the entity, name, date, or value itself, without a full
++sentence, lead-in phrase, or explanation. Do not wrap the answer in a sentence
++such as "X is ..." or "X defeated Y"; give just the requested item. Preserve
++any qualifiers that are part of the answer's identity (e.g. a full personal
++name or a place's region) when the evidence supports them.
+
+```
+
+机器的完整原始说明：
+
+```text
+Training evidence shows the dominant answer-processing failure is formatting/span selection, not missing knowledge: the agent returns full sentences or over-long spans when the prompt asks for 'only the short answer' (e.g. 'National Socialist black metal is seen as a neo-völkisch movement within black metal.' vs 'neo-völkisch'; 'Chuck Schumer defeated Al D'Amato.' vs 'Al D'Amato'). Prior proposals' relational-clause extraction was shown to be harmful (it truncated 'Chuck Schumer defeated Al D'Amato.' to just 'Chuck Schumer', F1 0.571->0.0). This proposal avoids any subject/object extraction. Instead it uses a conservative, ordered, pure-string AUDIT_RULES pipeline that only (1) strips common meta/lead-in phrases, (2) collapses whitespace and trims trailing punctuation, (3) removes a leading article, and (4) trims a trailing explanatory clause after a comma only when the answer is a full sentence. All rules are entity-agnostic, deterministic, no I/O, no hard-coded answers or task IDs, and preserve useful content. The skill prompt is tightened to reinforce minimal-span answers. Only agent.yaml, one middleware module, and skills/main.md are changed.
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/5/selection:fb3ed707d68ec726ac84e2e705c7a6f61cfe0eff576e7f23373dd965aa21fb2d -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/5/selection -->
+
+## continuous-v1/continuous_diagnosis_20261128/5/selection · Task 选择或无修改决定
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+```text
+{
+  "step": 5,
+  "candidate_id": "6dd868a544ce4df0b9b61599169fc8982128752026a6dd5419a02acc4d357686",
+  "selection": {
+    "base": "A",
+    "gate_only": "A",
+    "enhanced": "A",
+    "seed_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef"
+  },
+  "dev": {
+    "A": {
+      "em": 0.25,
+      "f1": 0.5722222222222222,
+      "n": 4,
+      "per_task": {
+        "5a815f445542995ce29dcbec": 0.0,
+        "5a81a2705542990a1d231e30": 0.0,
+        "5a734bb65542994cef4bc50f": 0.0,
+        "5a8a58f355429930ff3c0da3": 1.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.25,
+      "f1": 0.5722222222222222,
+      "n": 4,
+      "per_task": {
+        "5a815f445542995ce29dcbec": 0.0,
+        "5a81a2705542990a1d231e30": 0.0,
+        "5a734bb65542994cef4bc50f": 0.0,
+        "5a8a58f355429930ff3c0da3": 1.0
+      },
+      "usable": true
+    }
+  },
+  "final_test_after_all_selections_frozen": {
+    "A": {
+      "em": 0.25,
+      "f1": 0.65,
+      "n": 4,
+      "per_task": {
+        "5ab5f75e554299637185c64b": 0.0,
+        "5aba74ad55429955dce3ee35": 1.0,
+        "5abe54585542991f66106148": 0.0,
+        "5a7ce6bf55429909bec7686c": 0.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.25,
+      "f1": 0.65,
+      "n": 4,
+      "per_task": {
+        "5ab5f75e554299637185c64b": 0.0,
+        "5aba74ad55429955dce3ee35": 1.0,
+        "5abe54585542991f66106148": 0.0,
+        "5a7ce6bf55429909bec7686c": 0.0
+      },
+      "usable": true
+    }
+  },
+  "valid_requests": 0,
+  "supported_harmful_requests": []
+}
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/6/B:010fae1c830e1c99bedbf2939bbe950114350132cffd8a7b3d44010262e97143 -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/6/B -->
+
+## continuous-v1/continuous_diagnosis_20261128/6/B · 机器代码修改
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+轮次（从 0 开始）：6；阶段：shared_candidate_B；修改者：Meta；被修改对象：Task; fixed Meta, not self-update。
+
+差异比较起点：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef` → 候选版本：`9fc13bcf9eb82302280fc6714fe4655ced34a0e93c262458c1cc4f6e7c381c58`。实际 Snapshot 父版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`（None 表示原始记录未提供或根版本）。
+
+此处仅记录提出的修改；是否采用见后续对应版本的决定条目。
+
+执行修改的 Worker：`miniagent`；模型：`DeepSeek-V4-Flash`；Worker 版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`。
+
+### continuous-v1/continuous_diagnosis_20261128/6/B.1 · `agent.yaml`
+
+操作：修改；组件：config。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/agent.yaml
++++ 候选/agent.yaml
+@@ -3,7 +3,8 @@
+   extract: prompts/extract.md
+ tools:
+   - shell
+-middlewares: []
++middlewares:
++  - answer_audit
+ skills:
+   - main
+ sub_agents: []
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/6/B.2 · `middleware/answer_audit.py`
+
+操作：新增；组件：code。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/middleware/answer_audit.py
++++ 候选/middleware/answer_audit.py
+@@ -0,0 +1,75 @@
++import re
++
++from runtime.rule_audit import Rule
++
++
++_META_PREFIXES = (
++    "the answer is",
++    "the short answer is",
++    "answer:",
++    "short answer:",
++    "it is",
++    "it was",
++    "this is",
++    "that is",
++    "based on the context,",
++    "according to the context,",
++)
++
++_LEADING_ARTICLES = ("the ", "a ", "an ")
++
++
++def _strip_meta_prefix(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for prefix in _META_PREFIXES:
++        if lowered.startswith(prefix):
++            text = text[len(prefix):].strip()
++            lowered = text.lower()
++    return text
++
++
++def _normalize_whitespace(answer, evidence):
++    text = re.sub(r"\s+", " ", answer).strip()
++    text = text.rstrip(" .,;:")
++    return text
++
++
++def _strip_leading_article(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for article in _LEADING_ARTICLES:
++        if lowered.startswith(article):
++            candidate = text[len(article):].strip()
++            if candidate:
++                return candidate
++    return text
++
++
++def _trim_trailing_clause(answer, evidence):
++    text = answer.strip()
++    if "," not in text:
++        return text
++    if len(text.split()) < 6:
++        return text
++    head = text.split(",", 1)[0].strip()
++    if head and len(head.split()) >= 2:
++        return head
++    return text
++
++
++AUDIT_RULES = [
++    Rule("strip_meta_prefix", _strip_meta_prefix),
++    Rule("normalize_whitespace", _normalize_whitespace),
++    Rule("strip_leading_article", _strip_leading_article),
++    Rule("trim_trailing_clause", _trim_trailing_clause),
++]
++
++
++async def before_final(answer, ctx):
++    result = ctx.apply_answer_rules(
++        answer, {"context": ctx.question}, AUDIT_RULES
++    )
++    if result != answer:
++        return {"action": "replace", "answer": result}
++    return {"action": "accept"}
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/6/B.3 · `skills/main.md`
+
+操作：修改；组件：skill。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/skills/main.md
++++ 候选/skills/main.md
+@@ -4,3 +4,8 @@
+ entity or value, check the supporting evidence, and answer concisely. Follow any
+ explicit output-format requirements. Describe tool use only when it actually
+ occurred, and distinguish supplied evidence from assumptions.
++
++When the question asks for a short answer, return only the minimal span that
++answers it: the entity, name, date, or value itself, without a full sentence,
++without lead-in phrases such as "The answer is", and without explanatory
++clauses. Preserve the exact wording of the supporting evidence for that span.
+
+```
+
+机器的完整原始说明：
+
+```text
+Training evidence shows the dominant answer-processing failure is formatting/span selection, not missing knowledge: the agent returns full sentences or over-long spans when the prompt asks for 'only the short answer' (e.g. 'National Socialist black metal is seen as a neo-völkisch movement within black metal.' vs 'neo-völkisch'; 'Chuck Schumer defeated Al D'Amato.' vs 'Al D'Amato'). Prior proposals' relational-clause extraction was shown to be harmful (it truncated 'Chuck Schumer defeated Al D'Amato.' to just 'Chuck Schumer', F1 0.571->0.0). This proposal avoids any subject/object extraction. Instead it uses a conservative, ordered, pure-string AUDIT_RULES pipeline that only (1) strips common meta/lead-in phrases, (2) collapses whitespace and trims trailing punctuation, (3) removes a leading article, and (4) trims a trailing explanatory clause after a comma only when the answer is a full sentence. All rules are entity-agnostic, deterministic, no I/O, no hard-coded answers or task IDs, and preserve useful content. The skill prompt is tightened to reinforce minimal-span answers. Only agent.yaml, one middleware module, and skills/main.md are changed.
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/6/selection:63a460724c9f10affd49212ad1a27d52efa98f99ce8212ef83c3ca8003e5092e -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/6/selection -->
+
+## continuous-v1/continuous_diagnosis_20261128/6/selection · Task 选择或无修改决定
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+```text
+{
+  "step": 6,
+  "candidate_id": "9fc13bcf9eb82302280fc6714fe4655ced34a0e93c262458c1cc4f6e7c381c58",
+  "selection": {
+    "base": "A",
+    "gate_only": "A",
+    "enhanced": "A",
+    "seed_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef"
+  },
+  "dev": {
+    "A": {
+      "em": 0.75,
+      "f1": 0.8166666666666667,
+      "n": 4,
+      "per_task": {
+        "5a8cb288554299585d9e3726": 1.0,
+        "5a7a5ccf55429941d65f25d7": 0.0,
+        "5a8ff83c55429916514e73f3": 1.0,
+        "5ab1e75f554299340b525422": 1.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.75,
+      "f1": 0.75,
+      "n": 4,
+      "per_task": {
+        "5a8cb288554299585d9e3726": 1.0,
+        "5a7a5ccf55429941d65f25d7": 0.0,
+        "5a8ff83c55429916514e73f3": 1.0,
+        "5ab1e75f554299340b525422": 1.0
+      },
+      "usable": true
+    }
+  },
+  "final_test_after_all_selections_frozen": {
+    "A": {
+      "em": 0.75,
+      "f1": 0.95,
+      "n": 4,
+      "per_task": {
+        "5ab859a955429934fafe6d7b": 1.0,
+        "5ab66fd355429954757d32b7": 1.0,
+        "5a72160e55429971e9dc9253": 0.0,
+        "5adc99d95542994ed6169baa": 1.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 1.0,
+      "f1": 1.0,
+      "n": 4,
+      "per_task": {
+        "5ab859a955429934fafe6d7b": 1.0,
+        "5ab66fd355429954757d32b7": 1.0,
+        "5a72160e55429971e9dc9253": 1.0,
+        "5adc99d95542994ed6169baa": 1.0
+      },
+      "usable": true
+    }
+  },
+  "valid_requests": 0,
+  "supported_harmful_requests": []
+}
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/7/B:d0bd4113c51d1bc0e88cc6760b65d3a88c14b5945f35fc9f0558b365d3cb4bf9 -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/7/B -->
+
+## continuous-v1/continuous_diagnosis_20261128/7/B · 机器代码修改
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+轮次（从 0 开始）：7；阶段：shared_candidate_B；修改者：Meta；被修改对象：Task; fixed Meta, not self-update。
+
+差异比较起点：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef` → 候选版本：`7006870edc49538501fb4799de387251e22f815958d27f09d2f14ebad25011ea`。实际 Snapshot 父版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`（None 表示原始记录未提供或根版本）。
+
+此处仅记录提出的修改；是否采用见后续对应版本的决定条目。
+
+执行修改的 Worker：`miniagent`；模型：`DeepSeek-V4-Flash`；Worker 版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`。
+
+### continuous-v1/continuous_diagnosis_20261128/7/B.1 · `agent.yaml`
+
+操作：修改；组件：config。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/agent.yaml
++++ 候选/agent.yaml
+@@ -3,7 +3,8 @@
+   extract: prompts/extract.md
+ tools:
+   - shell
+-middlewares: []
++middlewares:
++  - answer_audit
+ skills:
+   - main
+ sub_agents: []
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/7/B.2 · `middleware/answer_audit.py`
+
+操作：新增；组件：code。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/middleware/answer_audit.py
++++ 候选/middleware/answer_audit.py
+@@ -0,0 +1,87 @@
++"""Deterministic answer post-processing middleware.
++
++Applies a small, ordered set of pure string transforms to the final answer so
++that short-answer tasks receive a minimal span instead of a full sentence.
++No I/O, no model calls, no randomness, no hard-coded entities or task IDs.
++"""
++
++import re
++
++from runtime.rule_audit import Rule
++
++
++# Common meta / lead-in phrases that wrap the actual answer.
++_META_PREFIXES = (
++    "the answer is",
++    "the correct answer is",
++    "answer:",
++    "it is",
++    "it was",
++    "this is",
++    "that is",
++    "based on the context,",
++    "based on the provided context,",
++    "according to the context,",
++    "according to the provided context,",
++)
++
++_LEADING_ARTICLES = ("the ", "a ", "an ")
++
++
++def _strip_meta_prefix(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for prefix in _META_PREFIXES:
++        if lowered.startswith(prefix):
++            text = text[len(prefix):].lstrip()
++            lowered = text.lower()
++    return text
++
++
++def _normalize_whitespace(answer, evidence):
++    text = re.sub(r"\s+", " ", answer).strip()
++    # Trim trailing sentence punctuation that is not part of the answer span.
++    text = text.rstrip(" \t\n")
++    while text and text[-1] in ".,;:":
++        text = text[:-1].rstrip()
++    return text
++
++
++def _strip_leading_article(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for article in _LEADING_ARTICLES:
++        if lowered.startswith(article):
++            candidate = text[len(article):].lstrip()
++            # Only strip when something meaningful remains.
++            if candidate:
++                return candidate
++    return text
++
++
++def _trim_trailing_clause(answer, evidence):
++    text = answer.strip()
++    # Only act on sentence-like answers (>= 6 words) that contain a comma.
++    if len(text.split()) < 6 or "," not in text:
++        return text
++    head = text.split(",", 1)[0].strip()
++    if head:
++        return head
++    return text
++
++
++AUDIT_RULES = [
++    Rule("strip_meta_prefix", _strip_meta_prefix),
++    Rule("normalize_whitespace", _normalize_whitespace),
++    Rule("strip_leading_article", _strip_leading_article),
++    Rule("trim_trailing_clause", _trim_trailing_clause),
++]
++
++
++async def before_final(answer, ctx):
++    result = ctx.apply_answer_rules(
++        answer, {"context": ctx.question}, AUDIT_RULES
++    )
++    if result != answer:
++        return {"action": "replace", "answer": result}
++    return {"action": "accept"}
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/7/B.3 · `skills/main.md`
+
+操作：修改；组件：skill。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/skills/main.md
++++ 候选/skills/main.md
+@@ -4,3 +4,14 @@
+ entity or value, check the supporting evidence, and answer concisely. Follow any
+ explicit output-format requirements. Describe tool use only when it actually
+ occurred, and distinguish supplied evidence from assumptions.
++
++## Short-answer discipline
++
++When the question asks for a short answer (e.g. "Return only the short
++answer"), reply with the minimal span that answers it:
++
++- Do not wrap the answer in a full sentence or add explanation.
++- Do not restate the question or add lead-ins like "The answer is".
++- Prefer the exact name/term as it appears in the context.
++- If the question asks for a single entity, return only that entity, not the
++  surrounding clause or a second entity.
+
+```
+
+机器的完整原始说明：
+
+```text
+Training evidence shows the dominant answer-processing failure is formatting/span selection, not missing knowledge: the agent returns full sentences or over-long spans when the prompt asks for 'only the short answer' (e.g. 'National Socialist black metal is seen as a neo-völkisch movement within black metal.' vs 'neo-völkisch'; 'Chuck Schumer defeated Al D'Amato.' vs 'Al D'Amato'). Prior proposals' relational-clause extraction was shown to be harmful (it truncated 'Chuck Schumer defeated Al D'Amato.' to just 'Chuck Schumer', F1 0.571->0.0). This proposal avoids any subject/object extraction. Instead it uses a conservative, ordered, pure-string AUDIT_RULES pipeline that only (1) strips common meta/lead-in phrases, (2) collapses whitespace and trims trailing punctuation, (3) removes a leading article, and (4) trims a trailing explanatory clause after a comma only when the answer is a full sentence. All rules are entity-agnostic, deterministic, no I/O, no hard-coded answers or task IDs, and preserve useful content. The skill prompt is tightened to reinforce minimal-span answers. Only agent.yaml, one middleware module, and skills/main.md are changed.
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/7/selection:f290329afc0606014d24d6712890991e04f6708b3505dcd8688bfba276e7a327 -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/7/selection -->
+
+## continuous-v1/continuous_diagnosis_20261128/7/selection · Task 选择或无修改决定
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+```text
+{
+  "step": 7,
+  "candidate_id": "7006870edc49538501fb4799de387251e22f815958d27f09d2f14ebad25011ea",
+  "selection": {
+    "base": "A",
+    "gate_only": "A",
+    "enhanced": "A",
+    "seed_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef"
+  },
+  "dev": {
+    "A": {
+      "em": 0.5,
+      "f1": 0.5238095238095238,
+      "n": 4,
+      "per_task": {
+        "5ab29486554299545a2cf9a4": 0.0,
+        "5a7b68a75542997c3ec97153": 0.0,
+        "5a802e135542992bc0c4a6c7": 1.0,
+        "5ae76e615542997ec2727647": 1.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.5,
+      "f1": 0.5,
+      "n": 4,
+      "per_task": {
+        "5ab29486554299545a2cf9a4": 0.0,
+        "5a7b68a75542997c3ec97153": 0.0,
+        "5a802e135542992bc0c4a6c7": 1.0,
+        "5ae76e615542997ec2727647": 1.0
+      },
+      "usable": true
+    }
+  },
+  "final_test_after_all_selections_frozen": {
+    "A": {
+      "em": 0.25,
+      "f1": 0.44791666666666663,
+      "n": 4,
+      "per_task": {
+        "5ae4d3c95542990ba0bbb165": 0.0,
+        "5addda1b5542992200553b55": 1.0,
+        "5ab81cd955429916710eaff7": 0.0,
+        "5a879adb5542996e4f30887f": 0.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.25,
+      "f1": 0.41666666666666663,
+      "n": 4,
+      "per_task": {
+        "5ae4d3c95542990ba0bbb165": 0.0,
+        "5addda1b5542992200553b55": 1.0,
+        "5ab81cd955429916710eaff7": 0.0,
+        "5a879adb5542996e4f30887f": 0.0
+      },
+      "usable": true
+    }
+  },
+  "valid_requests": 0,
+  "supported_harmful_requests": []
+}
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/8/B:5f4f695d1e14bdc1631cff36f94dc18155ae1bb57ba2004b96c93021f0d8940d -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/8/B -->
+
+## continuous-v1/continuous_diagnosis_20261128/8/B · 机器代码修改
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+轮次（从 0 开始）：8；阶段：shared_candidate_B；修改者：Meta；被修改对象：Task; fixed Meta, not self-update。
+
+差异比较起点：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef` → 候选版本：`55d1bd852df11f495d618ded60a3b733f781da85fb21dd42f270ceb8eb0b105d`。实际 Snapshot 父版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`（None 表示原始记录未提供或根版本）。
+
+此处仅记录提出的修改；是否采用见后续对应版本的决定条目。
+
+执行修改的 Worker：`miniagent`；模型：`DeepSeek-V4-Flash`；Worker 版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`。
+
+### continuous-v1/continuous_diagnosis_20261128/8/B.1 · `agent.yaml`
+
+操作：修改；组件：config。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/agent.yaml
++++ 候选/agent.yaml
+@@ -3,7 +3,8 @@
+   extract: prompts/extract.md
+ tools:
+   - shell
+-middlewares: []
++middlewares:
++  - answer_audit
+ skills:
+   - main
+ sub_agents: []
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/8/B.2 · `middleware/answer_audit.py`
+
+操作：新增；组件：code。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/middleware/answer_audit.py
++++ 候选/middleware/answer_audit.py
+@@ -0,0 +1,75 @@
++import re
++
++from runtime.rule_audit import Rule
++
++
++_META_PREFIXES = (
++    "the answer is",
++    "the short answer is",
++    "answer:",
++    "short answer:",
++    "it is",
++    "it was",
++    "this is",
++    "that is",
++    "based on the context,",
++    "according to the context,",
++)
++
++_LEADING_ARTICLES = ("the ", "a ", "an ")
++
++
++def _strip_meta_prefix(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for prefix in _META_PREFIXES:
++        if lowered.startswith(prefix):
++            text = text[len(prefix):].lstrip()
++            lowered = text.lower()
++    return text
++
++
++def _normalize_whitespace(answer, evidence):
++    text = re.sub(r"\s+", " ", answer).strip()
++    text = text.rstrip(" .,;:")
++    return text
++
++
++def _strip_leading_article(answer, evidence):
++    text = answer
++    lowered = text.lower()
++    for article in _LEADING_ARTICLES:
++        if lowered.startswith(article):
++            candidate = text[len(article):].lstrip()
++            if candidate:
++                return candidate
++    return text
++
++
++def _trim_trailing_clause(answer, evidence):
++    text = answer
++    if "," not in text:
++        return text
++    if len(text.split()) < 6:
++        return text
++    head = text.split(",", 1)[0].strip()
++    if head:
++        return head
++    return text
++
++
++AUDIT_RULES = [
++    Rule("strip_meta_prefix", _strip_meta_prefix),
++    Rule("normalize_whitespace", _normalize_whitespace),
++    Rule("strip_leading_article", _strip_leading_article),
++    Rule("trim_trailing_clause", _trim_trailing_clause),
++]
++
++
++async def before_final(answer, ctx):
++    result = ctx.apply_answer_rules(
++        answer, {"context": ctx.question}, AUDIT_RULES
++    )
++    if result != answer:
++        return {"action": "replace", "answer": result}
++    return {"action": "accept"}
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/8/B.3 · `skills/main.md`
+
+操作：修改；组件：skill。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/skills/main.md
++++ 候选/skills/main.md
+@@ -4,3 +4,8 @@
+ entity or value, check the supporting evidence, and answer concisely. Follow any
+ explicit output-format requirements. Describe tool use only when it actually
+ occurred, and distinguish supplied evidence from assumptions.
++
++When the question asks for a short answer, return only the minimal span that
++answers it: a name, title, place, date, or yes/no. Do not wrap the answer in a
++full sentence, do not restate the question, and do not include explanatory
++clauses. Prefer the exact wording used in the supplied context.
+
+```
+
+机器的完整原始说明：
+
+```text
+Training evidence shows the dominant answer-processing failure is formatting/span selection, not missing knowledge: the agent returns full sentences or over-long spans when the prompt asks for 'only the short answer' (e.g. 'National Socialist black metal is seen as a neo-völkisch movement within black metal.' vs 'neo-völkisch'; 'Chuck Schumer defeated Al D'Amato.' vs 'Al D'Amato'). Prior proposals' relational-clause extraction was shown to be harmful (it truncated 'Chuck Schumer defeated Al D'Amato.' to just 'Chuck Schumer', F1 0.571->0.0). This proposal avoids any subject/object extraction. Instead it uses a conservative, ordered, pure-string AUDIT_RULES pipeline that only (1) strips common meta/lead-in phrases, (2) collapses whitespace and trims trailing punctuation, (3) removes a leading article, and (4) trims a trailing explanatory clause after a comma only when the answer is a full sentence. All rules are entity-agnostic, deterministic, no I/O, no hard-coded answers or task IDs, and preserve useful content. The skill prompt is tightened to reinforce minimal-span answers. Only agent.yaml, one middleware module, and skills/main.md are changed.
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/8/selection:9dbaa407cb72835b9ec7bc887b437cfbd0d144d919cfcdf4a3da9a8f9f6e41a0 -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/8/selection -->
+
+## continuous-v1/continuous_diagnosis_20261128/8/selection · Task 选择或无修改决定
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+```text
+{
+  "step": 8,
+  "candidate_id": "55d1bd852df11f495d618ded60a3b733f781da85fb21dd42f270ceb8eb0b105d",
+  "selection": {
+    "base": "A",
+    "gate_only": "A",
+    "enhanced": "A",
+    "seed_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef"
+  },
+  "dev": {
+    "A": {
+      "em": 0.5,
+      "f1": 0.5384615384615384,
+      "n": 4,
+      "per_task": {
+        "5a8b041955429971feec4604": 1.0,
+        "5ab8680755429934fafe6da8": 1.0,
+        "5a7651825542992d0ec060a3": 0.0,
+        "5a867089554299211dda2b30": 0.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.5,
+      "f1": 0.5714285714285714,
+      "n": 4,
+      "per_task": {
+        "5a8b041955429971feec4604": 1.0,
+        "5ab8680755429934fafe6da8": 1.0,
+        "5a7651825542992d0ec060a3": 0.0,
+        "5a867089554299211dda2b30": 0.0
+      },
+      "usable": true
+    }
+  },
+  "final_test_after_all_selections_frozen": {
+    "A": {
+      "em": 0.25,
+      "f1": 0.45,
+      "n": 4,
+      "per_task": {
+        "5a81e8ea5542995ce29dcc73": 0.0,
+        "5a88c4175542997e5c09a6ae": 0.0,
+        "5ae64ad25542995703ce8b4f": 0.0,
+        "5a77aa8655429949eeb29f22": 1.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.25,
+      "f1": 0.45,
+      "n": 4,
+      "per_task": {
+        "5a81e8ea5542995ce29dcc73": 0.0,
+        "5a88c4175542997e5c09a6ae": 0.0,
+        "5ae64ad25542995703ce8b4f": 0.0,
+        "5a77aa8655429949eeb29f22": 1.0
+      },
+      "usable": true
+    }
+  },
+  "valid_requests": 0,
+  "supported_harmful_requests": []
+}
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/9/B:dc1be3d8dddd98cb242c2edd04bc55214a673e0355929cbc5d0e70981d5272f8 -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/9/B -->
+
+## continuous-v1/continuous_diagnosis_20261128/9/B · 机器代码修改
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+轮次（从 0 开始）：9；阶段：shared_candidate_B；修改者：Meta；被修改对象：Task; fixed Meta, not self-update。
+
+差异比较起点：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef` → 候选版本：`3c37a3b2b996791f5e21192475425335f211ab3c6fe1789f5606e958458fe9c9`。实际 Snapshot 父版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`（None 表示原始记录未提供或根版本）。
+
+此处仅记录提出的修改；是否采用见后续对应版本的决定条目。
+
+执行修改的 Worker：`miniagent`；模型：`DeepSeek-V4-Flash`；Worker 版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`。
+
+### continuous-v1/continuous_diagnosis_20261128/9/B.1 · `agent.yaml`
+
+操作：修改；组件：config。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/agent.yaml
++++ 候选/agent.yaml
+@@ -3,7 +3,8 @@
+   extract: prompts/extract.md
+ tools:
+   - shell
+-middlewares: []
++middlewares:
++  - answer_audit
+ skills:
+   - main
+ sub_agents: []
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/9/B.2 · `middleware/answer_audit.py`
+
+操作：新增；组件：code。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/middleware/answer_audit.py
++++ 候选/middleware/answer_audit.py
+@@ -0,0 +1,87 @@
++"""Deterministic post-answer audit middleware.
++
++Applies a small, ordered pipeline of pure string transforms to the final
++answer so that sentence-like or over-long answers are reduced toward the
++minimal span the prompt asks for. No I/O, no model calls, no randomness,
++no hard-coded entities or task IDs.
++"""
++
++import re
++
++from runtime.rule_audit import Rule
++
++
++# Common lead-in phrases that wrap the actual answer in a sentence.
++_META_PREFIXES = (
++    "the answer is ",
++    "the answer would be ",
++    "answer: ",
++    "it is ",
++    "it was ",
++    "this is ",
++    "this was ",
++    "based on the context, ",
++    "based on the supplied context, ",
++    "according to the context, ",
++    "according to the supplied context, ",
++)
++
++_LEADING_ARTICLES = ("the ", "a ", "an ")
++
++
++def _strip_meta_prefix(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for prefix in _META_PREFIXES:
++        if lowered.startswith(prefix):
++            text = text[len(prefix):].strip()
++            lowered = text.lower()
++    return text
++
++
++def _normalize_whitespace(answer, evidence):
++    text = re.sub(r"\s+", " ", answer).strip()
++    # Trim trailing sentence punctuation that is not part of the answer.
++    text = text.rstrip(" .;:,")
++    return text
++
++
++def _strip_leading_article(answer, evidence):
++    text = answer.strip()
++    lowered = text.lower()
++    for article in _LEADING_ARTICLES:
++        if lowered.startswith(article):
++            remainder = text[len(article):].strip()
++            # Only strip when something meaningful remains.
++            if remainder:
++                return remainder
++    return text
++
++
++def _trim_trailing_clause(answer, evidence):
++    text = answer.strip()
++    # Only act on full-sentence-like answers (>= 6 words) that contain a
++    # comma; keep the leading clause and drop the explanatory tail.
++    if "," not in text:
++        return text
++    if len(text.split()) < 6:
++        return text
++    head = text.split(",", 1)[0].strip()
++    return head if head else text
++
++
++AUDIT_RULES = [
++    Rule("strip_meta_prefix", _strip_meta_prefix),
++    Rule("normalize_whitespace", _normalize_whitespace),
++    Rule("strip_leading_article", _strip_leading_article),
++    Rule("trim_trailing_clause", _trim_trailing_clause),
++]
++
++
++async def before_final(answer, ctx):
++    result = ctx.apply_answer_rules(
++        answer, {"context": ctx.question}, AUDIT_RULES
++    )
++    if result != answer:
++        return {"action": "replace", "answer": result}
++    return {"action": "accept"}
+
+```
+
+### continuous-v1/continuous_diagnosis_20261128/9/B.3 · `skills/main.md`
+
+操作：修改；组件：skill。
+
+逐文件理由：**未单独记录**。不将整段说明臆配给此文件。
+
+实际代码差异：
+
+```diff
+--- 原版/skills/main.md
++++ 候选/skills/main.md
+@@ -4,3 +4,12 @@
+ entity or value, check the supporting evidence, and answer concisely. Follow any
+ explicit output-format requirements. Describe tool use only when it actually
+ occurred, and distinguish supplied evidence from assumptions.
++
++## Answer format
++
++When the question asks for a short answer, return only the minimal span that
++answers it: the entity, name, date, or value itself, with no surrounding
++sentence, no lead-in phrase, and no explanation. Do not restate the question
++and do not include multiple candidate entities unless the question explicitly
++asks for several. Preserve the exact wording of the supporting evidence for the
++span you choose.
+
+```
+
+机器的完整原始说明：
+
+```text
+Training evidence shows the dominant answer-processing failure is formatting/span selection, not missing knowledge: the agent returns full sentences or over-long spans when the prompt asks for 'only the short answer' (e.g. 'National Socialist black metal is seen as a neo-völkisch movement within black metal.' vs 'neo-völkisch'; 'Chuck Schumer defeated Al D'Amato.' vs 'Al D'Amato'). Prior proposals' relational-clause extraction was shown to be harmful (it truncated 'Chuck Schumer defeated Al D'Amato.' to just 'Chuck Schumer', F1 0.571->0.0). This proposal avoids any subject/object extraction. Instead it uses a conservative, ordered, pure-string AUDIT_RULES pipeline that only (1) strips common meta/lead-in phrases, (2) collapses whitespace and trims trailing punctuation, (3) removes a leading article, and (4) trims a trailing explanatory clause after a comma only when the answer is a full sentence. All rules are entity-agnostic, deterministic, no I/O, no hard-coded answers or task IDs, and preserve useful content. The skill prompt is tightened to reinforce minimal-span answers. Only agent.yaml, one middleware module, and skills/main.md are changed.
+```
+
+<!-- rsi-source:continuous-v1/continuous_diagnosis_20261128/9/selection:619050be1792dd47241438ec823002cc6d87641ddd1c34139548cf50d900ea44 -->
+
+<!-- rsi-event:continuous-v1/continuous_diagnosis_20261128/9/selection -->
+
+## continuous-v1/continuous_diagnosis_20261128/9/selection · Task 选择或无修改决定
+
+原始记录：[evidence.json](continuous-diagnosis-20261128/evidence.json)
+
+```text
+{
+  "step": 9,
+  "candidate_id": "3c37a3b2b996791f5e21192475425335f211ab3c6fe1789f5606e958458fe9c9",
+  "selection": {
+    "base": "A",
+    "gate_only": "A",
+    "enhanced": "A",
+    "seed_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef"
+  },
+  "dev": {
+    "A": {
+      "em": 0.5,
+      "f1": 0.7,
+      "n": 4,
+      "per_task": {
+        "5ab850795542990e739ec8bd": 0.0,
+        "5ae1af14554299234fd042c4": 1.0,
+        "5adcfba05542990d50227d83": 1.0,
+        "5ab3cecd5542992ade7c6eae": 0.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.5,
+      "f1": 0.7,
+      "n": 4,
+      "per_task": {
+        "5ab850795542990e739ec8bd": 0.0,
+        "5ae1af14554299234fd042c4": 1.0,
+        "5adcfba05542990d50227d83": 1.0,
+        "5ab3cecd5542992ade7c6eae": 0.0
+      },
+      "usable": true
+    }
+  },
+  "final_test_after_all_selections_frozen": {
+    "A": {
+      "em": 0.75,
+      "f1": 0.95,
+      "n": 4,
+      "per_task": {
+        "5ac01bca5542992a796dec8d": 1.0,
+        "5a807ea1554299485f598624": 0.0,
+        "5ae7ee41554299540e5a56b0": 1.0,
+        "5a8ac38855429970aeb70300": 1.0
+      },
+      "usable": true
+    },
+    "B": {
+      "em": 0.75,
+      "f1": 0.95,
+      "n": 4,
+      "per_task": {
+        "5ac01bca5542992a796dec8d": 1.0,
+        "5a807ea1554299485f598624": 0.0,
+        "5ae7ee41554299540e5a56b0": 1.0,
+        "5a8ac38855429970aeb70300": 1.0
+      },
+      "usable": true
+    }
+  },
+  "valid_requests": 0,
+  "supported_harmful_requests": []
+}
+```
