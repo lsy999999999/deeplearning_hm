@@ -1,5 +1,7 @@
 """Filesystem navigation and the edit boundary for Meta-Harness proposals."""
 
+from flashrsi.algorithms.meta_harness._journal import REASON_INSTRUCTION
+
 PROPOSE = """[Meta-Harness: propose]
 Search iteration: {step}
 
@@ -29,3 +31,6 @@ hard-coding answers or task IDs. Do not access held-out tests or benchmark grade
 Return a brief explanation of your design. The edited files are the proposal;
 there is no patch-response format to fill in.
 """
+
+
+PROPOSE += REASON_INSTRUCTION.replace("{", "{{").replace("}", "}}")

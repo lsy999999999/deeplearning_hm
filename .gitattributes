@@ -1,0 +1,2 @@
+# Preserve literal space-only context lines in archived unified diffs.
+results/RSI_ITERATIONS.md whitespace=-blank-at-eol

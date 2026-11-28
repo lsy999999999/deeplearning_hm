@@ -31,7 +31,7 @@ TEMPERATURE="${TEMPERATURE:-1}"
 CONFIG="${CONFIG:-$PROJECT_ROOT/configs/hotpotqa_pilot.yaml}"
 CONTAINER_IMAGE="${CONTAINER_IMAGE:-ca-rsi-runtime:local}"
 OUTPUT_DIR="${OUTPUT_DIR:-$PROJECT_ROOT/runs/study}"
-VISUALIZATION_OUTPUT="${VISUALIZATION_OUTPUT:-$PROJECT_ROOT/results/evolution-view.html}"
+VISUALIZATION_OUTPUT="${VISUALIZATION_OUTPUT:-$PROJECT_ROOT/results/evolution-live.html}"
 PYTHON_BIN="${PYTHON_BIN:-$PROJECT_ROOT/.venv/bin/python}"
 
 if [[ $# -gt 1 || ( $# -eq 1 && "$1" != --dry-run ) ]]; then

@@ -17,7 +17,7 @@ from filelock import FileLock
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = Path(__file__).with_name("evolution_view.html")
 SHELL = Path(__file__).with_name("evolution_shell.html")
-DEFAULT_OUTPUT = ROOT / "results/evolution-view.html"
+DEFAULT_OUTPUT = ROOT / "results/evolution-live.html"
 
 
 def read(path):
@@ -281,9 +281,14 @@ def load_run(directory):
     promote = next((d for _, d in reversed(records) if d.get("kind") == "promote"), {})
     final_id = result.get("snapshot_id", promote.get("candidate_id"))
     return {
-        "name": {"meta_harness": "Meta-Harness", "ca_rsi": "CA-RSI",
-                 "recursive_ca_rsi": "Recursive CA-RSI"}[method],
-        "meta_updates": [d for name, d in records if name.endswith("-meta_decision.json")],
+        "name": {
+            "meta_harness": "Meta-Harness",
+            "ca_rsi": "CA-RSI",
+            "recursive_ca_rsi": "Recursive CA-RSI",
+        }[method],
+        "meta_updates": [
+            d for name, d in records if name.endswith("-meta_decision.json")
+        ],
         "diagnoses": [d for name, d in records if name.endswith("-diagnosis.json")],
         "repairs": [d for name, d in records if name.endswith("-repair.json")],
         "final_worker_id": result.get("worker_snapshot_id"),
@@ -352,6 +357,18 @@ def atomic_write(path, text):
 
 
 def export(directories, output):
+    preservation = ROOT / "docs/demo_archive/originals-1ad8a37.json"
+    if preservation.exists():
+        protected = {(ROOT / name).resolve() for name in read(preservation)["files"]}
+        destinations = {
+            output.resolve(),
+            output.with_suffix(".json").resolve(),
+            output.with_name(output.stem + "-inline.html").resolve(),
+        }
+        if destinations & protected:
+            raise ValueError(
+                "This output is a preserved demonstration; choose evolution-live.html or a new path"
+            )
     if not directories:
         raise ValueError("No runs found; pass --run with a native experiment directory")
     data = {"runs": [load_run(path.resolve()) for path in directories]}

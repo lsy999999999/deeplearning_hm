@@ -14,6 +14,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from flashrsi.algorithms.meta_harness import _prompts as prompts
+from flashrsi.algorithms.meta_harness._journal import append_native, changes
 from flashrsi.core import Algorithm, Snapshot
 from flashrsi.core.snapshot import discard_runtime_files
 
@@ -126,7 +127,7 @@ class MetaHarness(Algorithm):
                         label = record.stem.split("-", 1)[-1]
                         if label in history_labels:
                             shutil.copy2(record, visible / record.name)
-                await self.worker.edit(
+                explanation = await self.worker.edit(
                     directory,
                     prompts.PROPOSE.format(
                         step=step,
@@ -148,12 +149,51 @@ class MetaHarness(Algorithm):
                 problem = str(error)
             else:
                 if seed.changed_paths(candidate):
+                    self._record_change(
+                        seed,
+                        candidate,
+                        explanation,
+                        step=step,
+                        phase="task_proposal",
+                        subject="Task",
+                    )
                     return candidate
                 problem = "the harness was left unchanged"
             self._record(
                 "decision", {"kind": "decline", "step": step, "problem": problem}
             )
             return None
+
+    def _record_change(
+        self, before, after, explanation, *, step, phase, subject, **metadata
+    ):
+        self._record(
+            "code_change",
+            {
+                "step": step,
+                "phase": phase,
+                "actor": "Meta",
+                "subject": subject,
+                "before_id": before.id,
+                "parent_id": after.parent_id,
+                "candidate_id": after.id,
+                "worker_snapshot_id": self.worker.snapshot.id
+                if self.worker.component_rules
+                else None,
+                "worker_agent": self.worker.name,
+                "worker_model": self.worker.config.get("llm", {}).get("model_name"),
+                **metadata,
+                **changes(before, after, explanation),
+            },
+        )
+
+    def _record(self, label, payload):
+        super()._record(label, payload)
+        if self._run_dir is not None:
+            record = (
+                self._run_dir / "trajectories" / f"{self._sequence:05d}-{label}.json"
+            )
+            append_native(self._run_dir, record, label)
 
     def _check(self) -> None:
         if not self.benchmark.dev:

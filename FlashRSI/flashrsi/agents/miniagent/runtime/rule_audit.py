@@ -126,7 +126,6 @@ def audit_rules(rules, cases, *, hypotheses=(), provenance=None):
         ):
             raise ValueError("Case expected must be a nonempty string list")
     variants = []
-    by_subset = {}
     for size in range(len(ids) + 1):
         for subset in itertools.combinations(ids, size):
             rows = []
@@ -169,7 +168,25 @@ def audit_rules(rules, cases, *, hypotheses=(), provenance=None):
                 else None,
             }
             variants.append(variant)
-            by_subset[frozenset(subset)] = variant
+    return {
+        "protocol": "pure-answer-rule-interventions-v1",
+        "manifest": [r.manifest() for r in rules],
+        "inputs_sha256": digest(cases),
+        "provenance": dict(provenance or {}),
+        "scope": "fixed_input_output_effect_not_general_reasoning_causality",
+        "variants": variants,
+        **interpret_variants(variants, ids, hypotheses),
+    }
+
+
+def interpret_variants(variants, ids, hypotheses=()):
+    """Interpret already-executed, already-graded binary task outcomes.
+
+    The outer evaluator may regrade outputs with its own benchmark rather than
+    exact string comparison, without re-executing any candidate code.
+    """
+    by_subset = {frozenset(v["enabled"]): v for v in variants}
+    case_ids = [row["id"] for row in variants[0]["cases"]]
     full = by_subset[frozenset(ids)]
     identity = by_subset[frozenset()]
     effects = []
@@ -263,14 +280,4 @@ def audit_rules(rules, cases, *, hypotheses=(), provenance=None):
         else:
             check["problem"] = "Malformed request or unknown case/rule ID"
         checks.append(check)
-    return {
-        "protocol": "pure-answer-rule-interventions-v1",
-        "manifest": [r.manifest() for r in rules],
-        "inputs_sha256": digest(cases),
-        "provenance": dict(provenance or {}),
-        "scope": "fixed_input_output_effect_not_general_reasoning_causality",
-        "variants": variants,
-        "effects": effects,
-        "interactions": interactions,
-        "hypotheses": checks,
-    }
+    return {"effects": effects, "interactions": interactions, "hypotheses": checks}
