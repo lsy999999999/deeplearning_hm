@@ -1,0 +1,6 @@
+{
+  "calls": 2,
+  "reflection": "omitted_to_preserve_two_call_budget",
+  "first_call": "empty_length_limited_response",
+  "recovery": "thinking_disabled"
+}

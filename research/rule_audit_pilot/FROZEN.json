@@ -1,0 +1,17 @@
+{
+  "scope": "bounded protocol pilot, no end-to-end RSI efficacy claim",
+  "budget": {
+    "max_calls": 2,
+    "max_completion_tokens_per_call": 2600,
+    "model": "DeepSeek-V4.1-Flash",
+    "automatic_retries": 0
+  },
+  "historical_source": "results/evolution-view.json",
+  "run": "ca_rsi-miniagent-hotpotqa-20261127-182117-253432",
+  "variant_id": "ab7a4bed5cb6135a19dbe750b2a67ac92e733a47b6e4390547b28ea994d1c6e8",
+  "historical_scope": "all historical audit boundary BEFORE outputs, not raw final-hook inputs; question-only context as archived, no attempt to reconstruct missing raw traces",
+  "selection": "all tasks from historical candidate audit; no selection by repair outcome",
+  "controlled_split": "6 visible training, 6 withheld controlled examples; all manually designed after observing historical comma bug",
+  "acceptance": "heldout repair exact accuracy strictly exceeds full candidate and has zero per-case regressions vs candidate; compare rule removal separately",
+  "meta_self_update": false
+}

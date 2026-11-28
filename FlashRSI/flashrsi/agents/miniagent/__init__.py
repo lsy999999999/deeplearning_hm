@@ -91,7 +91,14 @@ class MiniAgent(Agent):
                 status="finished" if success else "error",
                 output=result["answer"] if success else "",
                 messages=result.get("messages", []),
-                usage={"model_calls": result["usage"], "turns": result["turns"]},
+                usage={
+                    "model_calls": result["usage"],
+                    "turns": result["turns"],
+                    "rule_replays": [
+                        {"snapshot_id": self.snapshot.id, **replay}
+                        for replay in result.get("rule_replays", [])
+                    ],
+                },
                 error_message=None if success else result["stop_reason"],
             )
 

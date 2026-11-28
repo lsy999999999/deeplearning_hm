@@ -1,0 +1,25 @@
+{
+  "status": "passed",
+  "independent_direct_function_outputs_checked": 224,
+  "frozen_inputs_unchanged": true,
+  "heldout_ids_and_named_answers_absent_from_model_requests": true,
+  "model_calls": 2,
+  "usage_totals": {
+    "prompt_tokens": 6619,
+    "completion_tokens": 3127,
+    "total_tokens": 9746
+  },
+  "requested_model": "DeepSeek-V4.1-Flash",
+  "returned_models": [
+    "deepseek-flash"
+  ],
+  "elapsed_api_seconds": 18.37519296677783,
+  "related_tests": {
+    "passed": 59,
+    "warnings": 17,
+    "scope": "rule audit, fixed Meta, recursive CA-RSI, CA-RSI, MiniAgent final answer and skills, recursive tools"
+  },
+  "scientific_scope": "controlled mechanism pilot plus historical boundary proxies; not end-to-end RSI validation",
+  "generic_cli_smoke_test": "passed",
+  "frozen_replay_matches": "passed"
+}

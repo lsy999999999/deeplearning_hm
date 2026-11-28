@@ -1,0 +1,37 @@
+{
+  "hypotheses": [
+    {
+      "case_id": "train-county",
+      "disable": [
+        "comma_gloss"
+      ],
+      "predicted_output": "Graham County, Kansas",
+      "claim": "comma_gloss strips the state qualifier from a county name, but the full 'County, State' form is a meaningful entity name that should be preserved."
+    },
+    {
+      "case_id": "train-org",
+      "disable": [
+        "comma_gloss"
+      ],
+      "predicted_output": "Smith, Jones and Company",
+      "claim": "comma_gloss truncates at the first comma, destroying a multi-part organization name where the comma is internal to the entity."
+    },
+    {
+      "case_id": "train-person",
+      "disable": [
+        "comma_gloss"
+      ],
+      "predicted_output": "Ada Lovelace, a mathematician",
+      "claim": "comma_gloss correctly removes a trailing appositive gloss; disabling it leaves the gloss attached, showing the rule is useful for genuine appositives."
+    },
+    {
+      "case_id": "train-city",
+      "disable": [
+        "comma_gloss"
+      ],
+      "predicted_output": "Paris, the French capital",
+      "claim": "comma_gloss correctly removes a descriptive appositive; disabling it preserves the gloss, confirming the rule's intended benefit."
+    }
+  ],
+  "repair_source": "def comma_gloss(answer, evidence):\n    if \",\" not in answer:\n        return answer\n    head, sep, tail = answer.partition(\",\")\n    head = head.strip()\n    tail = tail.strip()\n    if not head or len(head) < 3:\n        return answer\n    if head[-1] in \"-/\" or any(ch.isdigit() for ch in head):\n        return answer\n    if len(head.split()) > 5:\n        return answer\n    # Preserve meaningful commas inside entity names: multi-part names\n    # (e.g. 'Smith, Jones and Company') and 'County, State' style qualifiers.\n    if re.search(r\"\\b(and|&)\\b\", tail, re.IGNORECASE):\n        return answer\n    if re.search(r\"\\b(County|Parish|Borough|Municipality)\\b\", head, re.IGNORECASE):\n        return answer\n    # Only drop a clean trailing gloss/appositive.\n    if tail and (tail[0].islower() or tail.lower().startswith((\"the \", \"a \", \"an \"))):\n        return head\n    return answer"
+}

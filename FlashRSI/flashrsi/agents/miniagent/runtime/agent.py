@@ -114,6 +114,23 @@ class Context:
     _final_continues: int = 0
     _final_continue_max: int = 3
     model_usage: list = field(default_factory=list)
+    rule_replays: list = field(default_factory=list)
+
+    def apply_answer_rules(self, answer, evidence, rules):
+        """Opt-in pure rule boundary shared with the offline intervention runner."""
+        from .rule_audit import run_rules
+
+        result = run_rules(
+            answer,
+            evidence,
+            rules,
+            emit=self.trace.event,
+            provenance={"run_id": self.run_id, "turn": self.turn},
+        )
+        self.rule_replays.append(
+            {"answer": answer, "evidence": copy.deepcopy(evidence), **result}
+        )
+        return result["output"]
 
     @property
     def turn(self) -> int:
@@ -1413,6 +1430,7 @@ async def run(
         "injections_count": ctx._injections_count,
         "final_continues": ctx._final_continues,
         "usage": ctx.model_usage,
+        "rule_replays": ctx.rule_replays,
     }
     trace.save_summary(summary)
     trace.event("run_end", **summary)

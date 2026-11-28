@@ -1,0 +1,304 @@
+{
+  "train": [
+    {
+      "id": "train-county",
+      "answer": "Graham County, Kansas",
+      "evidence": {
+        "context": "Graham County, Kansas is located in the state of Kansas."
+      },
+      "expected": [
+        "Graham County, Kansas"
+      ]
+    },
+    {
+      "id": "train-person",
+      "answer": "Ada Lovelace, a mathematician",
+      "evidence": {
+        "context": "The mathematician was Ada Lovelace."
+      },
+      "expected": [
+        "Ada Lovelace"
+      ]
+    },
+    {
+      "id": "train-benign",
+      "answer": "\"Ada Lovelace\".",
+      "evidence": {
+        "context": "Ada Lovelace was a mathematician."
+      },
+      "expected": [
+        "Ada Lovelace"
+      ]
+    },
+    {
+      "id": "train-org",
+      "answer": "Smith, Jones and Company",
+      "evidence": {
+        "context": "The contractor is Smith, Jones and Company."
+      },
+      "expected": [
+        "Smith, Jones and Company"
+      ]
+    },
+    {
+      "id": "train-city",
+      "answer": "Paris, the French capital",
+      "evidence": {
+        "context": "The answer is Paris."
+      },
+      "expected": [
+        "Paris"
+      ]
+    },
+    {
+      "id": "train-noop",
+      "answer": "Tokyo",
+      "evidence": {
+        "context": "Tokyo is a city."
+      },
+      "expected": [
+        "Tokyo"
+      ]
+    }
+  ],
+  "heldout": [
+    {
+      "id": "held-city",
+      "answer": "Portland, Oregon",
+      "evidence": {
+        "context": "Portland, Oregon is the location."
+      },
+      "expected": [
+        "Portland, Oregon"
+      ]
+    },
+    {
+      "id": "held-author",
+      "answer": "Mary Shelley, the novelist",
+      "evidence": {
+        "context": "The author is Mary Shelley."
+      },
+      "expected": [
+        "Mary Shelley"
+      ]
+    },
+    {
+      "id": "held-title",
+      "answer": "Hello, Dolly!",
+      "evidence": {
+        "context": "The musical is Hello, Dolly!"
+      },
+      "expected": [
+        "Hello, Dolly!"
+      ]
+    },
+    {
+      "id": "held-unknown",
+      "answer": "New York, New York",
+      "evidence": {
+        "context": "No location is specified."
+      },
+      "expected": [
+        "New York, New York"
+      ]
+    },
+    {
+      "id": "held-quotes",
+      "answer": "\"Grace Hopper\".",
+      "evidence": {
+        "context": "Grace Hopper was a computer scientist."
+      },
+      "expected": [
+        "Grace Hopper"
+      ]
+    },
+    {
+      "id": "held-noop",
+      "answer": "Auckland",
+      "evidence": {
+        "context": "Auckland is named in the source."
+      },
+      "expected": [
+        "Auckland"
+      ]
+    }
+  ],
+  "historical": [
+    {
+      "id": "5a7602d8554299109176e5fb",
+      "answer": "Dawn French",
+      "evidence": {
+        "context": "What actress and and writer starred with Jennifer Saunders in bothe \"The Supergrass\" and \"French and Saunders\"?"
+      },
+      "expected": [
+        "Dawn Roma French"
+      ],
+      "historical_candidate_output": "Dawn French"
+    },
+    {
+      "id": "5ac4f33355429924173fb507",
+      "answer": "Newport, Rhode Island",
+      "evidence": {
+        "context": "where is the Vanderbilt mansion which Ochre Point–Cliffs Historic District is its home located"
+      },
+      "expected": [
+        "Ochre Point Avenue"
+      ],
+      "historical_candidate_output": "Newport"
+    },
+    {
+      "id": "5a7cb993554299452d57b9c2",
+      "answer": "The circuit has very little change in elevation.",
+      "evidence": {
+        "context": "How much change in elevation is there at the site of the 1999 FIA GT Hockenheim 500km?"
+      },
+      "expected": [
+        "very little"
+      ],
+      "historical_candidate_output": "The circuit has very little change in elevation"
+    },
+    {
+      "id": "5a77253455429972597f1449",
+      "answer": "Ian Paisley",
+      "evidence": {
+        "context": "Who is older, Ivan Foster or Ian Paisley?"
+      },
+      "expected": [
+        "Ian Paisley"
+      ],
+      "historical_candidate_output": "Ian Paisley (born 1926; Foster born 1943)"
+    },
+    {
+      "id": "5a88b3b4554299206df2b336",
+      "answer": "opera",
+      "evidence": {
+        "context": "What type of art does The Consul and Arlecchino have in common?"
+      },
+      "expected": [
+        "music"
+      ],
+      "historical_candidate_output": "opera"
+    },
+    {
+      "id": "5aba52e655429939ce03dc94",
+      "answer": "\"The supreme playwright and poet of the English language\" / his reputation — the term \"Shakespeare's reputation\" presents that his works are considered supreme.",
+      "evidence": {
+        "context": "This term about a playwright who lived from 1564-1616 presented what about his works?"
+      },
+      "expected": [
+        "chronological collection of critical quotations"
+      ],
+      "historical_candidate_output": "approximately 38 plays and 154 sonnets"
+    },
+    {
+      "id": "5a79c7ac5542994bb9457097",
+      "answer": "Nine girls and 10 boys.",
+      "evidence": {
+        "context": "How many girls and boys are in the seventeen sibling family featured on Counting On?"
+      },
+      "expected": [
+        "nine girls and 10 boys"
+      ],
+      "historical_candidate_output": "Nine girls and 10 boys"
+    },
+    {
+      "id": "5a8e5a635542990e94052ae4",
+      "answer": "40 million",
+      "evidence": {
+        "context": "How many albums have been sold by the singer who released the 2002 single \"Sk8er Boi\"?"
+      },
+      "expected": [
+        "40 million"
+      ],
+      "historical_candidate_output": "40 million"
+    },
+    {
+      "id": "5ab736a65542992aa3b8c7db",
+      "answer": "Virgin",
+      "evidence": {
+        "context": "\"She's a Mystery to Me\" is a song on an album released in 1989 by what label?"
+      },
+      "expected": [
+        "Virgin"
+      ],
+      "historical_candidate_output": "Virgin"
+    },
+    {
+      "id": "5ae09ea05542993d6555ebc1",
+      "answer": "\"Dr. Gräsler, Badearzt\" by Arthur Schnitzler",
+      "evidence": {
+        "context": "The Bachelor was based on what novel written by an Austrian author?"
+      },
+      "expected": [
+        "\"Dr. Gräsler, Badearzt\""
+      ],
+      "historical_candidate_output": "\"Dr. Gräsler"
+    },
+    {
+      "id": "5ae7940c55429952e35ea984",
+      "answer": "Arnold Peter Møller (A.P. Møller)",
+      "evidence": {
+        "context": "What is the name of shipping magnate Mærsk Mc-Kinney Møller' father?"
+      },
+      "expected": [
+        "A.P. Møller"
+      ],
+      "historical_candidate_output": "A.P. Møller"
+    },
+    {
+      "id": "5a7ccc1e55429909bec7680e",
+      "answer": "UHF channel 44",
+      "evidence": {
+        "context": "On what UHF channel is the station that Cindy Williams is on broadcast?"
+      },
+      "expected": [
+        "44"
+      ],
+      "historical_candidate_output": "44"
+    },
+    {
+      "id": "5ade063d5542995b365fabcd",
+      "answer": "Major League Soccer",
+      "evidence": {
+        "context": "Donnie Smith who plays as a left back for New England Revolution belongs to what league featuring 22 teams?"
+      },
+      "expected": [
+        "Major League Soccer"
+      ],
+      "historical_candidate_output": "Major League Soccer (MLS)"
+    },
+    {
+      "id": "5ae096d755429906c02daadf",
+      "answer": "$7.3 billion",
+      "evidence": {
+        "context": "What is the net worth of the founder of Intel Corporation as of 2016?"
+      },
+      "expected": [
+        "7.3 billion"
+      ],
+      "historical_candidate_output": "$7.3 billion"
+    },
+    {
+      "id": "5ab55a9b5542992aa134a2ba",
+      "answer": "Jim Harrison",
+      "evidence": {
+        "context": "Legends of the Fall was based on a novella by what poetry and fiction writer?"
+      },
+      "expected": [
+        "James Harrison"
+      ],
+      "historical_candidate_output": "Jim Harrison"
+    },
+    {
+      "id": "5ae1bc7b554299234fd042df",
+      "answer": "Graham County, Kansas",
+      "evidence": {
+        "context": "In what county is the community, to which the character Everett Turner is travelling to in the book \"Away West\", located?"
+      },
+      "expected": [
+        "Graham County, Kansas"
+      ],
+      "historical_candidate_output": "Graham County"
+    }
+  ]
+}

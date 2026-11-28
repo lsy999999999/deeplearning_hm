@@ -45,6 +45,7 @@ class RecursiveCARSI(CARSI):
         **CARSI._defaults,
         "max_steps": 2,
         "repair_attempts": 1,
+        "meta_self_update": True,
         "max_meta_edit_units": 3,
         "meta_repeats": 2,
         "meta_train_tasks_per_step": 2,
@@ -52,6 +53,7 @@ class RecursiveCARSI(CARSI):
     _ranges = {
         **CARSI._ranges,
         "repair_attempts": (int, 0),
+        "meta_self_update": bool,
         "max_meta_edit_units": (int, 1),
         "meta_repeats": (int, 1),
         "meta_train_tasks_per_step": (int, 1),
@@ -70,19 +72,29 @@ class RecursiveCARSI(CARSI):
         if len(all_ids) != len(set(all_ids)):
             raise ValueError("All train/dev/test task IDs must be unique and disjoint")
         steps = self.config.max_steps
-        reserved = steps * self.config.meta_train_tasks_per_step
+        reserved = (
+            steps * self.config.meta_train_tasks_per_step
+            if self.config.meta_self_update
+            else 0
+        )
         if len(source.train) <= reserved:
             raise ValueError(
                 "recursive_ca_rsi needs train-size > rounds * meta_train_tasks_per_step"
             )
-        if len(source.dev) < 2 * steps:
-            raise ValueError("recursive_ca_rsi needs dev-size >= 2 * rounds")
+        if len(source.dev) < (2 if self.config.meta_self_update else 1) * steps:
+            raise ValueError("recursive_ca_rsi needs enough dev tasks for each enabled audit lane")
         # This split is fixed before any rollout; no task is selected by score.
         self._probe_train = tuple(
             source.train[-reserved:][step::steps] for step in range(steps)
         )
-        self._probe_dev = source.dev[1::2]
-        self.benchmark = _TaskView(source, source.train[:-reserved], source.dev[::2])
+        self._probe_dev = source.dev[1::2] if self.config.meta_self_update else ()
+        if self.config.meta_self_update:
+            self.benchmark = _TaskView(
+                source, source.train[:-reserved], source.dev[::2]
+            )
+        else:
+            self._probe_train = ()
+            self.benchmark = _TaskView(source, source.train, source.dev)
         self.worker.set_scope({name: "rw" for name in self.worker.component_rules})
         self._meta_feedback = []
         self._task_feedback = []
@@ -99,6 +111,7 @@ class RecursiveCARSI(CARSI):
                 ],
                 "meta_probe_dev_ids": [t.task_id for t in self._probe_dev],
                 "meta_repeats": self.config.meta_repeats,
+                "meta_self_update": self.config.meta_self_update,
                 "test_used_for_selection": False,
                 "scope": "adaptive_development_validation_not_final_efficacy",
             },
@@ -300,6 +313,16 @@ class RecursiveCARSI(CARSI):
     async def _on_round_end(self, step, incumbent):
         """Generate self-edit first; reveal this round's challenge only afterwards."""
         self._publish_task_feedback(step)
+        if not self.config.meta_self_update:
+            self._record(
+                "meta_decision",
+                {
+                    "step": step,
+                    "accepted": False,
+                    "reason": "meta_self_update_disabled",
+                },
+            )
+            return
         original = self.worker.snapshot
         self._save_snapshot(original)
         try:

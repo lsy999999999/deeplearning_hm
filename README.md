@@ -296,3 +296,7 @@ open results/evolution-view.html
 同候选选择器重放、冻结测试版本和成本汇总的使用方法见 [本地复现说明](docs/local_run.zh-CN.md)。
 FlashRSI 保留上游 Apache-2.0 许可证，历史修改补丁见
 [`flashrsi-ca-rsi-ab1607a.patch`](patches/flashrsi-ca-rsi-ab1607a.patch)。
+
+### 规则级机制验证（首轮）
+
+[操作指南](docs/rule-audit.zh-CN.md) · [实际结果与限制](results/rule-audit-pilot-20261128/REPORT_CN.md)。已支持固定输入的规则干预和固定 Meta 实验；首轮是确定性答案转换的受控试验及历史重放，尚未证明完整 RSI 收益。
