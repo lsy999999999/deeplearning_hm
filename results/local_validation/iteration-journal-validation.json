@@ -1,0 +1,24 @@
+{
+  "status": "passed",
+  "related_tests": 113,
+  "existing_utcnow_warnings": 17,
+  "original_artifacts_unchanged": 228,
+  "backfilled_markdown_events": 21,
+  "repeat_import_added_events": 0,
+  "old_rule_pilot_frozen_replay": "identical",
+  "rule_interventions": "integrated into recursive diagnosis/repair; fixed learning final boundaries only",
+  "task_meta_shadow_version_reason_links": "passed; next Task proposal uses accepted Meta snapshot",
+  "preserved_visualization_overwrite_guard": "passed; new default is results/evolution-live.html",
+  "new_configuration": "configs/recursive_ca_rsi_rule_audit.yaml; fixed Meta; max_tokens=2600; no automatic retries",
+  "live_model_calls_this_change": 0,
+  "scientific_scope": "software integration and controlled offline agents; no new end-to-end RSI efficacy experiment",
+  "checks": [
+    "ruff",
+    "git diff --check",
+    "frozen artifact hashes",
+    "idempotent append and changed-source rejection",
+    "old pilot replay",
+    "new config dry-run",
+    "no credential-like strings in changed code and journal"
+  ]
+}

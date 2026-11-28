@@ -136,7 +136,9 @@ def apply_overrides(config, args):
         counts = config.benchmark.get("split_counts", {})
         reserved = steps * config.algorithm.get("meta_train_tasks_per_step", 2)
         if counts.get("train", reserved + 1) <= reserved:
-            raise ValueError("recursive_ca_rsi train-size must exceed rounds * meta_train_tasks_per_step")
+            raise ValueError(
+                "recursive_ca_rsi train-size must exceed rounds * meta_train_tasks_per_step"
+            )
         if counts.get("dev", 2 * steps) < 2 * steps:
             raise ValueError("recursive_ca_rsi dev-size must be at least twice rounds")
     if not evaluation and config.algorithm.name == "meta_harness":
@@ -207,7 +209,11 @@ async def execute(args, values):
     print(json.dumps({"run_dir": str(directory), "result": result}, ensure_ascii=False))
     if config.algorithm.name in {"meta_harness", "ca_rsi", "recursive_ca_rsi"}:
         from export_evolution import refresh
+        from record_iterations import append_run
 
+        journal_output = args.visualization_output.with_name("RSI_ITERATIONS.md")
+        append_run(directory, journal_output)
+        print("Iteration journal updated:", journal_output)
         try:
             refresh(directory, args.visualization_output)
         except Exception as error:
@@ -256,11 +262,13 @@ def build_parser():
     parser.add_argument(
         "--visualization-output",
         type=Path,
-        default=ROOT / "results/evolution-view.html",
+        default=ROOT / "results/evolution-live.html",
     )
     parser.add_argument("--container-image")
     parser.add_argument("--reuse-evaluations", type=Path)
-    parser.add_argument("--algorithm", choices=("ca_rsi", "meta_harness", "recursive_ca_rsi"))
+    parser.add_argument(
+        "--algorithm", choices=("ca_rsi", "meta_harness", "recursive_ca_rsi")
+    )
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--dry-run", action="store_true")
     modes.add_argument("--prepare", action="store_true")

@@ -1,0 +1,23 @@
+{
+  "historical/meta_harness-miniagent-hotpotqa-20261127-183624-453530/0/proposal": "db0dbb334aa3d973f53f5c7ebb6349a48136590cb9b1702bcbeaac2b019cfc69",
+  "historical/meta_harness-miniagent-hotpotqa-20261127-183624-453530/0/decision": "2b5a67db0a400c7f558a87d1262f6fb6454533ba18d70a135eb0f438eb285bbe",
+  "historical/ca_rsi-miniagent-hotpotqa-20261127-182117-253432/0/proposal": "3ef55a4fdbf8509313996293d0bc30581171559a0dcc081eec4a399ecfc8f7c5",
+  "historical/ca_rsi-miniagent-hotpotqa-20261127-182117-253432/0/decision": "3210114632d4285b8302057573d4b58d885f0aba8223e3e34af59b405822a437",
+  "historical/meta_harness-miniagent-hotpotqa-20261127-193656-488919/0/proposal": "c0d55806dfb95073bb2573a2c609841749ea590cdf59b3370e41a7ae991442b3",
+  "historical/meta_harness-miniagent-hotpotqa-20261127-193656-488919/0/decision": "04df51293ccd1c2f31de61ff5a1365d742f893cc808a8d99e791b86733d16d58",
+  "historical/meta_harness-miniagent-hotpotqa-20261127-193656-488919/1/proposal": "f453938c04d57793b74aebf648c06c9abd8394ba1c66330b6e053f2f75d35261",
+  "historical/meta_harness-miniagent-hotpotqa-20261127-193656-488919/1/decision": "1b3fa9b9fd640ca76cc169b1fef85026a9466f49aa76854e2d5749c92d838994",
+  "historical/meta_harness-miniagent-hotpotqa-20261127-193656-488919/2/decision": "90ae1d164e740d3a4edd0b04bf12cf8d8e5a6c8cbf606c4d576d55e71a1a1e7b",
+  "historical/meta_harness-miniagent-hotpotqa-20261127-193656-488919/3/proposal": "f38aee3e6689bd69b3ec450901fef1b88fcf1367f7d70da860be1f38d1698ef9",
+  "historical/meta_harness-miniagent-hotpotqa-20261127-193656-488919/3/decision": "1eee640fe0b19d4057828f7941c1efabf89fe5216eed01423ab1e295a6afba3c",
+  "historical/ca_rsi-miniagent-hotpotqa-20261127-193749-026674/0/proposal": "30e2f9f1fdce9c79fffc94769d823c4dc84b01c6c9f1268ac4e4e5784753871e",
+  "historical/ca_rsi-miniagent-hotpotqa-20261127-193749-026674/0/decision": "d23b639aebcb356cd013609aecdcfd8efed2b0d1df39d483a3d531e733337601",
+  "historical/ca_rsi-miniagent-hotpotqa-20261127-193749-026674/1/proposal": "ee9514f84b81c7adb9c2c8f31e4b16161b2b40617c8eb830aa412a7b1f5e14ca",
+  "historical/ca_rsi-miniagent-hotpotqa-20261127-193749-026674/1/decision": "ec1eff6dacf1febc857a14ceae8a4a49b95123f3cfc7f797ba4ab19e2ece1e7d",
+  "historical/ca_rsi-miniagent-hotpotqa-20261127-193749-026674/2/proposal": "33ea6cdfba3268b315707594a73d466828758ea8a2d15345c45856e28f761a0b",
+  "historical/ca_rsi-miniagent-hotpotqa-20261127-193749-026674/2/decision": "6227a8a8824719d9f64cda8762861a73a2b33a267c546a7a5f87d620d6b6d1de",
+  "historical/ca_rsi-miniagent-hotpotqa-20261127-193749-026674/3/proposal": "233ddc1dfed897b1c79717976f66b89ff0b374d0ba2707ccd5c2a82681641536",
+  "historical/ca_rsi-miniagent-hotpotqa-20261127-193749-026674/3/decision": "6dadf53f8f39da0c83af5ee5c5c1aff420ce7346ed72173fda5e17c5c844be9f",
+  "pilot/rule-audit-pilot-20261128/repair-proposal": "79c5ea5bc651735367cc5f9ce0a945907f1a88b4e5eaa0f1a759bfe5c8702194",
+  "pilot/rule-audit-pilot-20261128/verification": "4396b03de0b8998cd94fc3e8ea968fd4f4e04628ff28460398c7fcde7f91f5c1"
+}

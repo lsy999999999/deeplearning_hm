@@ -127,8 +127,21 @@ class Context:
             emit=self.trace.event,
             provenance={"run_id": self.run_id, "turn": self.turn},
         )
+        source_paths = {event["rule"]["path"] for event in result["events"]}
+        module_path = None
+        if len(source_paths) == 1:
+            source = Path(next(iter(source_paths))).resolve()
+            if source.is_relative_to(self.workspace.root.resolve()):
+                module_path = source.relative_to(
+                    self.workspace.root.resolve()
+                ).as_posix()
         self.rule_replays.append(
-            {"answer": answer, "evidence": copy.deepcopy(evidence), **result}
+            {
+                "answer": answer,
+                "evidence": copy.deepcopy(evidence),
+                "module_path": module_path,
+                **result,
+            }
         )
         return result["output"]
 

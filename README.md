@@ -389,3 +389,7 @@ FlashRSI 保留上游 Apache-2.0 许可证，历史修改补丁见
 ### 规则级机制验证（首轮）
 
 [操作指南](docs/rule-audit.zh-CN.md) · [实际结果与限制](results/rule-audit-pilot-20261128/REPORT_CN.md)。已支持固定输入的规则干预和固定 Meta 实验；首轮是确定性答案转换的受控试验及历史重放，尚未证明完整 RSI 收益。
+
+### 持续机器迭代记录
+
+[逐次修改与验证日志](results/RSI_ITERATIONS.md) · [记录方式与规则验证接入](docs/RSI_RECORDING_GUIDE.md) · [保留的原演示资料](docs/demo_archive/README.md)。新运行自动记录每个文件的实际差异、机器理由、版本和采用决定；新规则审计配置独立保存，旧示例与首轮结果不回写。
