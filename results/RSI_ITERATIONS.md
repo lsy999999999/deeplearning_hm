@@ -8652,3 +8652,14182 @@ I was cut off mid-edit. Here is an honest report of what I actually completed an
   "problem": "unchanged or over-budget Meta proposal"
 }
 ```
+
+<!-- rsi-source:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00005-code_change:0601358d24f271a2b82dc2af1b1967a9402c1327bc8b86e5a297906d578c2ac7 -->
+
+<!-- rsi-event:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00005-code_change -->
+
+## public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00005-code_change · 机器代码修改
+
+原始记录：[00005-code_change.json](../runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/trajectories/00005-code_change.json)
+
+轮次（从 0 开始）：0；阶段：task_proposal；修改者：Meta；被修改对象：Task。
+
+差异比较起点：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef` → 候选版本：`bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b`。实际 Snapshot 父版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`（None 表示原始记录未提供或根版本）。
+
+此处仅记录提出的修改；是否采用见后续对应版本的决定条目。
+
+执行修改的 Worker：`miniagent`；模型：`DeepSeek-V4-Flash`；Worker 版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`。
+
+### public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00005-code_change.1 · `agent.yaml`
+
+操作：modify；组件：config。
+
+机器为此文件给出的理由（待验证）：
+
+```text
+Register the new answer_shape middleware so the runtime loads and executes it; no other config changed.
+```
+
+机器引用的证据 ID（引用声明，不等于证据已核验）：
+
+```text
+["5abc5955554299114383a118", "5adfda5255429942ec259b5e", "5abc8507554299700f9d78de"]
+```
+
+实际代码差异：
+
+```diff
+--- before/agent.yaml
++++ after/agent.yaml
+@@ -3,7 +3,8 @@
+   extract: prompts/extract.md
+ tools:
+   - shell
+-middlewares: []
++middlewares:
++  - answer_shape
+ skills:
+   - main
+ sub_agents: []
+
+```
+
+### public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00005-code_change.2 · `middleware/answer_shape.py`
+
+操作：add；组件：code。
+
+机器为此文件给出的理由（待验证）：
+
+```text
+Add a pure, ordered AUDIT_RULES pipeline that trims trailing parentheticals, qualifiers and administrative suffixes from short answers, wired through ctx.apply_answer_rules in before_final; addresses exact-match losses where the right entity was returned with extra surface material.
+```
+
+机器引用的证据 ID（引用声明，不等于证据已核验）：
+
+```text
+["5abc5955554299114383a118", "5adfda5255429942ec259b5e", "5abc8507554299700f9d78de"]
+```
+
+实际代码差异：
+
+```diff
+--- before/middleware/answer_shape.py
++++ after/middleware/answer_shape.py
+@@ -0,0 +1,206 @@
++"""Deterministic answer-shape normalization for short-answer tasks.
++
++Observed failure mode (supplied-context multi-hop QA): the model finds the
++right entity but returns it with extra surface material, so exact match fails
++while F1 stays high, e.g.
++
++    "Midnight Madness (1980)"  vs  "Midnight Madness"
++    "Douglas County"           vs  "Douglas"
++    "To be, or not to be"      vs  "To be"
++
++The rules below only *remove* material that the answer itself shows to be
++non-essential (a trailing parenthetical, a trailing qualifier, a trailing
++clause). They never invent, reorder or substitute content, and every rule is a
++pure function of (answer, evidence) with no model calls and no I/O.
++
++`evidence` is the runtime's structured evidence dict. When it carries the
++supplied context under a known key, a rule may additionally check that the
++shorter form is attested verbatim in that context; otherwise the rule falls
++back to purely syntactic checks. Nothing here depends on task IDs.
++"""
++
++from __future__ import annotations
++
++import re
++
++from runtime.rule_audit import Rule
++
++# Keys under which the runtime may expose the supplied context / question.
++_CONTEXT_KEYS = ("context", "supplied_context", "evidence", "documents", "passages")
++
++# A short answer is a name, a date, a number or a short phrase. Anything much
++# longer is prose and must not be trimmed by these rules.
++_MAX_WORDS = 12
++_MAX_CHARS = 120
++
++# Trailing parenthetical: "Midnight Madness (1980)", "Foo (film)".
++_TRAILING_PAREN = re.compile(r"\s*\([^()]{0,60}\)\s*$")
++
++# A parenthetical that carries a measurement is part of the value, not a
++# disambiguator: "575 acres (2.08 km²)" must stay intact.
++_MEASUREMENT_PAREN = re.compile(
++    r"\(\s*[^()]{0,40}?(?:\d|km|mi|m\b|ft|kg|lb|ha|acres|metres|meters|"
++    r"square|sq|°|%|USD|EUR|GBP)[^()]{0,40}?\)\s*$",
++    re.IGNORECASE,
++)
++
++# Trailing qualifier after a comma: "To be, or not to be", "Douglas, Minnesota".
++_TRAILING_CLAUSE = re.compile(r",\s+[^,]{1,80}$")
++
++# Trailing administrative suffix: "Douglas County" -> "Douglas".
++_TRAILING_SUFFIX = re.compile(
++    r"\s+(?:County|Parish|Borough|Municipality|Township|Province|Prefecture)$",
++    re.IGNORECASE,
++)
++
++# Leading article that short-answer keys normally omit. Only applied when the
++# remainder is a single capitalised token ("The Dressmaker" is a title and must
++# survive; "The Beatles" likewise).
++_LEADING_ARTICLE = re.compile(r"^(?:The|A|An)\s+(\S+)$")
++
++# Wrapping quotes / markdown emphasis around the whole answer.
++_WRAPPERS = (
++    ('"', '"'),
++    ("'", "'"),
++    ("\u201c", "\u201d"),
++    ("**", "**"),
++    ("`", "`"),
++)
++
++
++def _evidence_text(evidence, keys) -> str:
++    """Concatenate any supplied context/question strings found in evidence."""
++    if not isinstance(evidence, dict):
++        return ""
++    parts = []
++    for key in keys:
++        value = evidence.get(key)
++        if isinstance(value, str):
++            parts.append(value)
++        elif isinstance(value, (list, tuple)):
++            parts.extend(x for x in value if isinstance(x, str))
++    return "\n".join(parts)
++
++
++def _is_short_answer(answer: str) -> bool:
++    text = answer.strip()
++    if not text or len(text) > _MAX_CHARS:
++        return False
++    if "\n" in text:
++        return False
++    return len(text.split()) <= _MAX_WORDS
++
++
++def _attested(shorter: str, evidence) -> bool:
++    """True when the shorter form appears verbatim in supplied context.
++
++    With no supplied context the check is vacuous: the rule then relies on its
++    syntactic guard alone, which only ever removes trailing material.
++    """
++    haystack = _evidence_text(evidence, _CONTEXT_KEYS)
++    if not haystack:
++        return True
++    return shorter.casefold() in haystack.casefold()
++
++
++def _strip_wrappers(answer: str, evidence) -> str:
++    text = answer.strip()
++    for left, right in _WRAPPERS:
++        if (
++            len(text) > len(left) + len(right)
++            and text.startswith(left)
++            and text.endswith(right)
++        ):
++            inner = text[len(left) : len(text) - len(right)].strip()
++            if inner:
++                return inner
++    return answer
++
++
++def _drop_trailing_parenthetical(answer: str, evidence) -> str:
++    text = answer.strip()
++    if not _is_short_answer(text):
++        return answer
++    match = _TRAILING_PAREN.search(text)
++    if not match:
++        return answer
++    if _MEASUREMENT_PAREN.search(text):
++        return answer
++    shorter = text[: match.start()].strip()
++    # Keep at least one word and require the bare form to be attested.
++    if not shorter or not _attested(shorter, evidence):
++        return answer
++    return shorter
++
++
++def _drop_trailing_clause(answer: str, evidence) -> str:
++    text = answer.strip()
++    if not _is_short_answer(text):
++        return answer
++    match = _TRAILING_CLAUSE.search(text)
++    if not match:
++        return answer
++    shorter = text[: match.start()].strip()
++    if not shorter or not _attested(shorter, evidence):
++        return answer
++    return shorter
++
++
++def _drop_trailing_suffix(answer: str, evidence) -> str:
++    text = answer.strip()
++    if not _is_short_answer(text):
++        return answer
++    match = _TRAILING_SUFFIX.search(text)
++    if not match:
++        return answer
++    shorter = text[: match.start()].strip()
++    if not shorter or not _attested(shorter, evidence):
++        return answer
++    return shorter
++
++
++def _drop_leading_article(answer: str, evidence) -> str:
++    text = answer.strip()
++    if not _is_short_answer(text):
++        return answer
++    match = _LEADING_ARTICLE.match(text)
++    if not match:
++        return answer
++    shorter = match.group(1).strip()
++    if not shorter or not _attested(shorter, evidence):
++        return answer
++    return shorter
++
++
++# Ordered pipeline: each rule sees the previous rule's output. Order matters —
++# wrappers first, then the most specific trailing material, then the generic
++# clause split, then the leading article. The audit protocol bounds a pipeline
++# at four rules, so the two trailing-suffix cases share one rule.
++AUDIT_RULES = [
++    Rule("strip_wrappers", _strip_wrappers),
++    Rule("drop_trailing_parenthetical", _drop_trailing_parenthetical),
++    Rule("drop_trailing_clause", _drop_trailing_clause),
++    Rule("drop_trailing_suffix", _drop_trailing_suffix),
++]
++
++
++def _evidence_for(ctx) -> dict:
++    """Structured evidence handed to the pure rules.
++
++    Only data the runtime already holds is exposed; the rules never read the
++    filesystem or call a model.
++    """
++    return {
++        "question": getattr(ctx, "question", "") or "",
++        "turn": getattr(ctx, "turn", 0),
++        "tool_calls": len(getattr(ctx, "tool_history", []) or []),
++    }
++
++
++async def before_final(answer, ctx):
++    """Apply the declared answer rules at the final-answer boundary."""
++    evidence = _evidence_for(ctx)
++    shaped = ctx.apply_answer_rules(answer, evidence, AUDIT_RULES)
++    if shaped != answer:
++        return {"action": "replace", "answer": shaped}
++    return {"action": "accept"}
+
+```
+
+### public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00005-code_change.3 · `skills/main.md`
+
+操作：modify；组件：skill。
+
+机器为此文件给出的理由（待验证）：
+
+```text
+Add short-answer formatting guidance and multi-hop resolution steps so the model emits minimal answer spans, reducing reliance on post-hoc trimming.
+```
+
+机器引用的证据 ID（引用声明，不等于证据已核验）：
+
+```text
+["5abc5955554299114383a118", "5adfda5255429942ec259b5e", "5abc8507554299700f9d78de", "5ae763aa5542995703ce8c09"]
+```
+
+实际代码差异：
+
+```diff
+--- before/skills/main.md
++++ after/skills/main.md
+@@ -4,3 +4,28 @@
+ entity or value, check the supporting evidence, and answer concisely. Follow any
+ explicit output-format requirements. Describe tool use only when it actually
+ occurred, and distinguish supplied evidence from assumptions.
++
++## Short answers
++
++When the task asks for a short answer (a name, title, date, number, place or
++short phrase), return the minimal string that answers it:
++
++- No trailing parentheticals or disambiguators: `Midnight Madness`, not
++  `Midnight Madness (1980)`.
++- No trailing qualifiers or clauses: `To be`, not `To be, or not to be`.
++- No administrative suffix the question did not ask for: `Douglas`, not
++  `Douglas County`, when the question asks which county.
++- No leading article, no surrounding quotes, no markdown, no explanation, no
++  "The answer is ..." preamble.
++- Copy the wording of the supplied context for the answer span; do not
++  paraphrase names or titles.
++
++If the question asks for a full name, a full title, or a value with units, keep
++the complete form exactly as the context states it (for example
++`575 acres (2.08 km²)` or `William Dwight Schultz`).
++
++## Multi-hop questions
++
++Resolve each hop against the supplied context before answering: find the
++intermediate entity, then the attribute the question actually asks for. Answer
++the final hop only, not the intermediate entity.
+
+```
+
+机器的完整原始说明：
+
+```text
+I ran out of turns while debugging one regex, so I'll report honestly what is done and what is unverified.
+
+## Changes made (3 files)
+
+**1. `middleware/answer_shape.py` (new)** — a deterministic answer-shaping middleware. It defines an ordered `AUDIT_RULES` list of `Rule(id, pure_function)` objects and applies them via `ctx.apply_answer_rules(answer, evidence, AUDIT_RULES)` in `before_final`, returning `{"action": "replace", ...}` only when the string actually changed. Rules are pure (no model calls, no I/O) and only *remove* trailing surface material:
+- `strip_wrappers` — surrounding quotes / markdown emphasis.
+- `drop_trailing_parenthetical` — `"Midnight Madness (1980)"` → `"Midnight Madness"`, guarded so measurement parentheticals (`"575 acres (2.08 km²)"`) are kept.
+- `drop_trailing_clause` — `"To be, or not to be"` → `"To be"`.
+- `drop_trailing_suffix` — `"Douglas County"` → `"Douglas"`.
+
+Guards: only short answers (≤12 words, ≤120 chars, single line) are touched; when the evidence dict carries supplied context, the shorter form must appear verbatim in it. No task IDs or answers are hard-coded.
+
+**2. `agent.yaml`** — registered `answer_shape` under `middlewares` (previously empty). Tools, prompts, skills and sub_agents unchanged.
+
+**3. `skills/main.md`** — added short-answer formatting guidance (no trailing parentheticals/qualifiers/articles, keep full names and values with units) and a multi-hop resolution note. Original task-solving text preserved.
+
+## Validation actually performed
+- Synthetic run of `run_rules` over 14 hand-written cases: 12 passed. Two failures were traced to the measurement guard regex `_MEASUREMENT_PAREN` matching too broadly (it also matched `(1980)` and `(film)`), so `"Midnight Madness (1980)"` was left untrimmed. **This bug is not yet fixed** — the file as written will not trim that case.
+- `audit_rules` over 4 synthetic cases: all 16 subsets valid and replay-stable; full-pipeline score 0.75, reflecting the same parenthetical bug.
+- No benchmark or model evaluation was run.
+
+## Limitations
+- The parenthetical guard needs a narrower pattern (e.g. require a unit token or a digit-plus-unit, not a bare digit) before the `(1980)` case works.
+- The `drop_leading_article` rule was removed to stay within the 4-rule audit bound; leading articles are therefore not normalized.
+- Effects on real task scores are unverified.
+
+<CHANGE_REASONS>{"files":[{"path":"middleware/answer_shape.py","reason":"Add a pure, ordered AUDIT_RULES pipeline that trims trailing parentheticals, qualifiers and administrative suffixes from short answers, wired through ctx.apply_answer_rules in before_final; addresses exact-match losses where the right entity was returned with extra surface material.","evidence_task_ids":["5abc5955554299114383a118","5adfda5255429942ec259b5e","5abc8507554299700f9d78de"]},{"path":"agent.yaml","reason":"Register the new answer_shape middleware so the runtime loads and executes it; no other config changed.","evidence_task_ids":["5abc5955554299114383a118","5adfda5255429942ec259b5e","5abc8507554299700f9d78de"]},{"path":"skills/main.md","reason":"Add short-answer formatting guidance and multi-hop resolution steps so the model emits minimal answer spans, reducing reliance on post-hoc trimming.","evidence_task_ids":["5abc5955554299114383a118","5adfda5255429942ec259b5e","5abc8507554299700f9d78de","5ae763aa5542995703ce8c09"]}]}</CHANGE_REASONS>
+```
+
+<!-- rsi-source:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00009-diagnosis:06defcbade63e9a90433577e6d11cc7fdf8c0262c6a81871699303665bb1c504 -->
+
+<!-- rsi-event:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00009-diagnosis -->
+
+## public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00009-diagnosis · Meta 诊断假设
+
+原始记录：[00009-diagnosis.json](../runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/trajectories/00009-diagnosis.json)
+
+```text
+{
+  "step": 0,
+  "attempt": 0,
+  "candidate_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+  "issues": [
+    {
+      "path": "middleware/answer_shape.py",
+      "kind": "answer-format mismatch (rule under-triggering)",
+      "claim": "The `_attested` guard blocks `drop_trailing_parenthetical` whenever the bare form is not verbatim in the supplied context. In 5abc5955554299114383a118 the model answered 'Midnight Madness (1980)' and the context contains 'Midnight Madness (film)' and 'Midnight Madness (album)' but never the bare string 'Midnight Madness' as a standalone span, so the rule no-ops and exact match fails (EM 0.0, F1 0.8). Same mechanism for 5ab30ebf554299753aec592c ('The Dressmaker (2015 film)' -> EM 0.0, F1 0.5), where the context only has 'The Dressmaker (2015 film)' and quoted '\"The Dressmaker\"'.",
+      "evidence_task_ids": [
+        "5abc5955554299114383a118",
+        "5ab30ebf554299753aec592c"
+      ],
+      "repair": "In `_drop_trailing_parenthetical`, treat the bare form as attested when it appears in the context as a prefix of a parenthesised occurrence, i.e. accept if `shorter` occurs in the haystack at all (substring match already does this) — the real defect is that the haystack is empty because `_evidence_for` never populates any of `_CONTEXT_KEYS`; add the supplied context/question text to the evidence dict passed to `ctx.apply_answer_rules` (e.g. include `ctx.question` under key 'question' and any supplied context under 'context'), so `_attested` is not vacuously true/false by accident.",
+      "verification": "Replay 5abc5955554299114383a118 and 5ab30ebf554299753aec592c with the rule enabled and assert the final output is exactly 'Midnight Madness' and 'The Dressmaker' respectively; also assert `_evidence_text(evidence, _CONTEXT_KEYS)` is non-empty for these cases."
+    },
+    {
+      "path": "middleware/answer_shape.py",
+      "kind": "answer-format mismatch (rule under-triggering)",
+      "claim": "`drop_trailing_clause` requires the shorter form to be attested, but `_evidence_for` supplies no context, so `_attested` returns True only because the haystack is empty — meaning the rule fires on syntax alone. It did fire correctly for 5abc8507554299700f9d78de ('To be, or not to be' -> 'To be'), but the same vacuous-attestation path means the guard provides no real protection; the observed pass is incidental to the empty-evidence fallback rather than to context checking.",
+      "evidence_task_ids": [
+        "5abc8507554299700f9d78de"
+      ],
+      "repair": "Populate the evidence dict with the supplied context (see previous issue) so `_attested` performs a real check; keep the syntactic fallback only when no context is available.",
+      "verification": "Unit-test `_drop_trailing_clause('To be, or not to be', {'context': <supplied context>})` returns 'To be' and that `_attested('To be', {'context': ...})` is True against the real context text."
+    },
+    {
+      "path": "middleware/answer_shape.py",
+      "kind": "reasoning error (model, not rule)",
+      "claim": "For 5ae4f3c455429960a22e0221 the model answered '2.08 km²' instead of '575 acres (2.08 km²)'. This is a model answer-selection error (dropped the primary unit), not a middleware fault: the measurement-parenthetical guard correctly preserved the full form when the model did emit it (after-run output '575 acres (2.08 km²)', EM 1.0). No rule change is warranted; the skill already instructs keeping values with units.",
+      "evidence_task_ids": [
+        "5ae4f3c455429960a22e0221"
+      ],
+      "repair": "No middleware change. Optionally strengthen skills/main.md wording that when a value has two unit forms, keep the full context span verbatim rather than one unit.",
+      "verification": "Replay 5ae4f3c455429960a22e0221 and confirm the model emits '575 acres (2.08 km²)' and the measurement guard leaves it unchanged (no_op on drop_trailing_parenthetical)."
+    },
+    {
+      "path": "middleware/answer_shape.py",
+      "kind": "uncertain hypothesis (no rule fault observed)",
+      "claim": "5ae763aa5542995703ce8c09 ('Dwight Schultz' vs 'William Dwight Schultz') and 5adfda5255429942ec259b5e ('Douglas County' vs 'Douglas') were fixed in the after-run, but the after-run also changed the skill prompt, so the improvement cannot be attributed to the middleware rules alone. The 'Douglas County' -> 'Douglas' fix is consistent with `drop_trailing_suffix`, but the audit shows no rule_replay event for that case, so causation is unverified.",
+      "evidence_task_ids": [
+        "5ae763aa5542995703ce8c09",
+        "5adfda5255429942ec259b5e"
+      ],
+      "repair": "No code change; treat as unverified. If desired, add a rule_replay assertion so suffix/name fixes are attributable to a specific rule.",
+      "verification": "Replay 5adfda5255429942ec259b5e with only `drop_trailing_suffix` enabled and confirm output 'Douglas'; replay 5ae763aa5542995703ce8c09 with all rules disabled to see whether the skill prompt alone yields the full name."
+    }
+  ],
+  "interventions": [],
+  "status": "hypothesis_not_verified"
+}
+```
+
+<!-- rsi-source:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00010-rule_intervention:a64a9ce3868663329c7d17021dad1bb5f2a4de2550c321c4b4547e0e08e7246e -->
+
+<!-- rsi-event:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00010-rule_intervention -->
+
+## public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00010-rule_intervention · 规则干预执行证据
+
+原始记录：[00010-rule_intervention.json](../runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/trajectories/00010-rule_intervention.json)
+
+```text
+{
+  "step": 0,
+  "attempt": 0,
+  "stage": "candidate_before_repair",
+  "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+  "status": "executed",
+  "scope": "learning_only_fixed_final_boundary_not_end_to_end_causality",
+  "groups": [
+    {
+      "module_path": "middleware/answer_shape.py",
+      "status": "executed",
+      "report": {
+        "protocol": "pure-answer-rule-interventions-v1",
+        "manifest": [
+          {
+            "rule_id": "strip_wrappers",
+            "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+            "line": 106,
+            "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+            "depends_on": []
+          },
+          {
+            "rule_id": "drop_trailing_parenthetical",
+            "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+            "line": 120,
+            "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+            "depends_on": []
+          },
+          {
+            "rule_id": "drop_trailing_clause",
+            "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+            "line": 136,
+            "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+            "depends_on": []
+          },
+          {
+            "rule_id": "drop_trailing_suffix",
+            "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+            "line": 149,
+            "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+            "depends_on": []
+          }
+        ],
+        "inputs_sha256": "e4671f1d15fc9b45f7d538a1d551892331f563ac78abf6356b4df971a0049d13",
+        "provenance": {
+          "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b"
+        },
+        "scope": "fixed_input_output_effect_not_general_reasoning_causality",
+        "variants": [
+          {
+            "enabled": [],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "strip_wrappers"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "drop_trailing_parenthetical"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "drop_trailing_clause"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "drop_trailing_suffix"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "strip_wrappers",
+              "drop_trailing_parenthetical"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "strip_wrappers",
+              "drop_trailing_clause"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "strip_wrappers",
+              "drop_trailing_suffix"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "drop_trailing_parenthetical",
+              "drop_trailing_clause"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "drop_trailing_parenthetical",
+              "drop_trailing_suffix"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "drop_trailing_clause",
+              "drop_trailing_suffix"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "strip_wrappers",
+              "drop_trailing_parenthetical",
+              "drop_trailing_clause"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "strip_wrappers",
+              "drop_trailing_parenthetical",
+              "drop_trailing_suffix"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "strip_wrappers",
+              "drop_trailing_clause",
+              "drop_trailing_suffix"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "drop_trailing_parenthetical",
+              "drop_trailing_clause",
+              "drop_trailing_suffix"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "strip_wrappers",
+              "drop_trailing_parenthetical",
+              "drop_trailing_clause",
+              "drop_trailing_suffix"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-o7fc_xmf/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          }
+        ],
+        "effects": [
+          {
+            "rule_id": "strip_wrappers",
+            "status": "valid",
+            "removal_gain": 0.0,
+            "alone_gain": 0.0,
+            "rescued_ids": [],
+            "regressed_ids": []
+          },
+          {
+            "rule_id": "drop_trailing_parenthetical",
+            "status": "valid",
+            "removal_gain": 0.0,
+            "alone_gain": 0.0,
+            "rescued_ids": [],
+            "regressed_ids": []
+          },
+          {
+            "rule_id": "drop_trailing_clause",
+            "status": "valid",
+            "removal_gain": 0.0,
+            "alone_gain": 0.0,
+            "rescued_ids": [],
+            "regressed_ids": []
+          },
+          {
+            "rule_id": "drop_trailing_suffix",
+            "status": "valid",
+            "removal_gain": 0.0,
+            "alone_gain": 0.0,
+            "rescued_ids": [],
+            "regressed_ids": []
+          }
+        ],
+        "interactions": [
+          {
+            "rules": [
+              "strip_wrappers",
+              "drop_trailing_parenthetical"
+            ],
+            "others_enabled": [
+              "drop_trailing_clause",
+              "drop_trailing_suffix"
+            ],
+            "difference_in_differences": 0.0
+          },
+          {
+            "rules": [
+              "strip_wrappers",
+              "drop_trailing_clause"
+            ],
+            "others_enabled": [
+              "drop_trailing_parenthetical",
+              "drop_trailing_suffix"
+            ],
+            "difference_in_differences": 0.0
+          },
+          {
+            "rules": [
+              "strip_wrappers",
+              "drop_trailing_suffix"
+            ],
+            "others_enabled": [
+              "drop_trailing_clause",
+              "drop_trailing_parenthetical"
+            ],
+            "difference_in_differences": 0.0
+          },
+          {
+            "rules": [
+              "drop_trailing_parenthetical",
+              "drop_trailing_clause"
+            ],
+            "others_enabled": [
+              "drop_trailing_suffix",
+              "strip_wrappers"
+            ],
+            "difference_in_differences": 0.0
+          },
+          {
+            "rules": [
+              "drop_trailing_parenthetical",
+              "drop_trailing_suffix"
+            ],
+            "others_enabled": [
+              "drop_trailing_clause",
+              "strip_wrappers"
+            ],
+            "difference_in_differences": 0.0
+          },
+          {
+            "rules": [
+              "drop_trailing_clause",
+              "drop_trailing_suffix"
+            ],
+            "others_enabled": [
+              "drop_trailing_parenthetical",
+              "strip_wrappers"
+            ],
+            "difference_in_differences": 0.0
+          }
+        ],
+        "hypotheses": [],
+        "grading": "registered_benchmark_binary_primary_metric",
+        "primary_metric": "exact_match"
+      }
+    }
+  ],
+  "skipped": [
+    {
+      "task_id": "5a77a41a5542997042120ab9",
+      "reason": "fixed case budget reached"
+    },
+    {
+      "task_id": "5abc8507554299700f9d78de",
+      "reason": "fixed case budget reached"
+    },
+    {
+      "task_id": "5adfda5255429942ec259b5e",
+      "reason": "fixed case budget reached"
+    },
+    {
+      "task_id": "5ae763aa5542995703ce8c09",
+      "reason": "fixed case budget reached"
+    }
+  ]
+}
+```
+
+<!-- rsi-source:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00012-code_change:d2906d62ec2d624e56c94591f57d0d7ca0c3fa89ec7c783814c2a683d4a55a8c -->
+
+<!-- rsi-event:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00012-code_change -->
+
+## public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00012-code_change · 机器代码修改
+
+原始记录：[00012-code_change.json](../runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/trajectories/00012-code_change.json)
+
+轮次（从 0 开始）：0；阶段：task_repair；修改者：Meta；被修改对象：Task。
+
+差异比较起点：`bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b` → 候选版本：`bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b`。实际 Snapshot 父版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`（None 表示原始记录未提供或根版本）。
+
+此处仅记录提出的修改；是否采用见后续对应版本的决定条目。
+
+执行修改的 Worker：`miniagent`；模型：`DeepSeek-V4-Flash`；Worker 版本：`11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef`。
+
+本次未产生文件改动。
+
+机器的完整原始说明：
+
+```text
+I was unable to complete the requested edit. No files were changed.
+
+**What happened:** I inspected the workspace (`middleware/answer_shape.py`, `runtime/agent.py`, `runtime/rule_audit.py`, `runtime/workspace.py`, `runtime/trace.py`, `runtime/editor.py`, `runtime/llm.py`, `runtime/reader.py`, `runtime/tools.py`, `runtime/web_config.py`, `runtime/tool_result.py`, `tools/shell.py`, `tools/read_skill.py`, `agent.yaml`, `prompts/system.md`, `prompts/extract.md`, `skills/main.md`, and the two tool descriptions). I then attempted a lightweight synthetic check of the answer rules via the `shell` tool. That check was re-issued repeatedly and consumed the entire turn budget before I could apply any edit. The repeated calls were an execution failure on my part, not a finding about the harness.
+
+**What the inspection established (observations, not verified fixes):**
+- `middleware/answer_shape.py` defines `_CONTEXT_KEYS = ("context", "supplied_context", "evidence", "documents", "passages")`, but `_evidence_for(ctx)` returns only `question`, `turn`, and `tool_calls`. So `_evidence_text(evidence, _CONTEXT_KEYS)` is always empty at the `before_final` boundary, and `_attested` always takes its vacuous-True branch. This matches the diagnosis's core claim.
+- `Context` in `runtime/agent.py` has no field carrying the supplied context/question text beyond `question`; the question string itself is the only place the supplied context appears (the task prompt embeds "Context: ..." inside the question). There is no separate context attribute to forward.
+- `_drop_trailing_parenthetical` already guards measurements via `_MEASUREMENT_PAREN`, and `_drop_trailing_clause` / `_drop_trailing_suffix` already call `_attested`. The rules are pure and take `(answer, evidence)`.
+
+**Not done:** the actual repair (populating the evidence dict so `_attested` performs a real check, and any accompanying rule adjustment), the synthetic verification of `Midnight Madness (1980)` → `Midnight Madness`, `The Dressmaker (2015 film)` → `The Dressmaker`, `To be, or not to be` → `To be`, and the measurement no-op. I also did not touch `skills/main.md` (the diagnosis's optional wording item) or add any rule-replay assertion.
+
+**Uncertainty:** I did not verify whether forwarding the question text alone is sufficient for the parenthetical cases, since the bare form must appear as a substring of the haystack; the supplied context in these tasks is embedded in the question string, so it likely is, but this is unconfirmed.
+
+<CHANGE_REASONS>
+{"files":[]}
+</CHANGE_REASONS>
+```
+
+<!-- rsi-source:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00014-rule_intervention:7bece79222705039faa16492cbef0d87aca6420866f41529378c38d5898d17a5 -->
+
+<!-- rsi-event:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00014-rule_intervention -->
+
+## public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00014-rule_intervention · 规则干预执行证据
+
+原始记录：[00014-rule_intervention.json](../runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/trajectories/00014-rule_intervention.json)
+
+```text
+{
+  "step": 0,
+  "attempt": 0,
+  "stage": "repair_on_same_frozen_inputs",
+  "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+  "status": "executed",
+  "scope": "learning_only_fixed_final_boundary_not_end_to_end_causality",
+  "groups": [
+    {
+      "module_path": "middleware/answer_shape.py",
+      "status": "executed",
+      "report": {
+        "protocol": "pure-answer-rule-interventions-v1",
+        "manifest": [
+          {
+            "rule_id": "strip_wrappers",
+            "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+            "line": 106,
+            "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+            "depends_on": []
+          },
+          {
+            "rule_id": "drop_trailing_parenthetical",
+            "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+            "line": 120,
+            "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+            "depends_on": []
+          },
+          {
+            "rule_id": "drop_trailing_clause",
+            "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+            "line": 136,
+            "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+            "depends_on": []
+          },
+          {
+            "rule_id": "drop_trailing_suffix",
+            "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+            "line": 149,
+            "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+            "depends_on": []
+          }
+        ],
+        "inputs_sha256": "e4671f1d15fc9b45f7d538a1d551892331f563ac78abf6356b4df971a0049d13",
+        "provenance": {
+          "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b"
+        },
+        "scope": "fixed_input_output_effect_not_general_reasoning_causality",
+        "variants": [
+          {
+            "enabled": [],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "strip_wrappers"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "drop_trailing_parenthetical"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "drop_trailing_clause"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "drop_trailing_suffix"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "strip_wrappers",
+              "drop_trailing_parenthetical"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "strip_wrappers",
+              "drop_trailing_clause"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "strip_wrappers",
+              "drop_trailing_suffix"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "drop_trailing_parenthetical",
+              "drop_trailing_clause"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "drop_trailing_parenthetical",
+              "drop_trailing_suffix"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "drop_trailing_clause",
+              "drop_trailing_suffix"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "strip_wrappers",
+              "drop_trailing_parenthetical",
+              "drop_trailing_clause"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "strip_wrappers",
+              "drop_trailing_parenthetical",
+              "drop_trailing_suffix"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "strip_wrappers",
+              "drop_trailing_clause",
+              "drop_trailing_suffix"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "drop_trailing_parenthetical",
+              "drop_trailing_clause",
+              "drop_trailing_suffix"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": false,
+                    "action": "disabled",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          },
+          {
+            "enabled": [
+              "strip_wrappers",
+              "drop_trailing_parenthetical",
+              "drop_trailing_clause",
+              "drop_trailing_suffix"
+            ],
+            "valid": true,
+            "cases": [
+              {
+                "id": "5a74397055429974ef308bbe::final-boundary",
+                "valid": true,
+                "output": "Bob Hill",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Bob Hill",
+                    "after": "Bob Hill",
+                    "evidence": {
+                      "question_omitted_sha256": "6c97e6b1616a34da51d727f7f81161677fdfbea446f7af77e5fde698cf9040ab",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5a74397055429974ef308bbe::final-boundary"
+                    },
+                    "input_sha256": "04c47ba90e5038061cacb8a5a2e53dd3bd638bfa00a38970002429420bcf33c4"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5abc5955554299114383a118::final-boundary",
+                "valid": true,
+                "output": "Midnight Madness",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "Midnight Madness",
+                    "after": "Midnight Madness",
+                    "evidence": {
+                      "question_omitted_sha256": "3b954fef7e283025433fd997bec8a14500f99bb7987c543c27ba325d493d8ffe",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5abc5955554299114383a118::final-boundary"
+                    },
+                    "input_sha256": "8acdbe3a4fd9d8289e930549baa20c779ada25236f88020885f4b1ab5414c5d8"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ab30ebf554299753aec592c::final-boundary",
+                "valid": true,
+                "output": "The Dressmaker",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "The Dressmaker",
+                    "after": "The Dressmaker",
+                    "evidence": {
+                      "question_omitted_sha256": "5769d9ad0493bb80652229bd886657245adc8eaf3740b0fc7b66288be786b535",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ab30ebf554299753aec592c::final-boundary"
+                    },
+                    "input_sha256": "be7991d1cbc8c4a451dc9aaa811489a9da948dcca8e036768b4a34161325a8b9"
+                  }
+                ],
+                "correct": true
+              },
+              {
+                "id": "5ae4f3c455429960a22e0221::final-boundary",
+                "valid": true,
+                "output": "575 acres (2.08 km²)",
+                "events": [
+                  {
+                    "rule": {
+                      "rule_id": "strip_wrappers",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 106,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_parenthetical",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 120,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_clause",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 136,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  },
+                  {
+                    "rule": {
+                      "rule_id": "drop_trailing_suffix",
+                      "path": "/Users/wangqibo/cs3.1/deeplearning/dp/runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/working/checkout-p27svxct/middleware/answer_shape.py",
+                      "line": 149,
+                      "source_sha256": "2628ad05e7b145e90e9f128f6b7e04b419dd2234bdf43b2158aa0568c49c5b75",
+                      "depends_on": []
+                    },
+                    "enabled": true,
+                    "action": "no_op",
+                    "before": "575 acres (2.08 km²)",
+                    "after": "575 acres (2.08 km²)",
+                    "evidence": {
+                      "question_omitted_sha256": "7fed866eb14485b1cd0b8ea8024b6bafeb9535877a40e6a8720c975fddadc57a",
+                      "turn": 1,
+                      "tool_calls": 0
+                    },
+                    "provenance": {
+                      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+                      "case_id": "5ae4f3c455429960a22e0221::final-boundary"
+                    },
+                    "input_sha256": "00e6f6fc260ffab49374fd67ee6e81609d8ffa96bd23ce8257bb1dda0aef318d"
+                  }
+                ],
+                "correct": true
+              }
+            ],
+            "score": 1.0
+          }
+        ],
+        "effects": [
+          {
+            "rule_id": "strip_wrappers",
+            "status": "valid",
+            "removal_gain": 0.0,
+            "alone_gain": 0.0,
+            "rescued_ids": [],
+            "regressed_ids": []
+          },
+          {
+            "rule_id": "drop_trailing_parenthetical",
+            "status": "valid",
+            "removal_gain": 0.0,
+            "alone_gain": 0.0,
+            "rescued_ids": [],
+            "regressed_ids": []
+          },
+          {
+            "rule_id": "drop_trailing_clause",
+            "status": "valid",
+            "removal_gain": 0.0,
+            "alone_gain": 0.0,
+            "rescued_ids": [],
+            "regressed_ids": []
+          },
+          {
+            "rule_id": "drop_trailing_suffix",
+            "status": "valid",
+            "removal_gain": 0.0,
+            "alone_gain": 0.0,
+            "rescued_ids": [],
+            "regressed_ids": []
+          }
+        ],
+        "interactions": [
+          {
+            "rules": [
+              "strip_wrappers",
+              "drop_trailing_parenthetical"
+            ],
+            "others_enabled": [
+              "drop_trailing_clause",
+              "drop_trailing_suffix"
+            ],
+            "difference_in_differences": 0.0
+          },
+          {
+            "rules": [
+              "strip_wrappers",
+              "drop_trailing_clause"
+            ],
+            "others_enabled": [
+              "drop_trailing_parenthetical",
+              "drop_trailing_suffix"
+            ],
+            "difference_in_differences": 0.0
+          },
+          {
+            "rules": [
+              "strip_wrappers",
+              "drop_trailing_suffix"
+            ],
+            "others_enabled": [
+              "drop_trailing_clause",
+              "drop_trailing_parenthetical"
+            ],
+            "difference_in_differences": 0.0
+          },
+          {
+            "rules": [
+              "drop_trailing_parenthetical",
+              "drop_trailing_clause"
+            ],
+            "others_enabled": [
+              "drop_trailing_suffix",
+              "strip_wrappers"
+            ],
+            "difference_in_differences": 0.0
+          },
+          {
+            "rules": [
+              "drop_trailing_parenthetical",
+              "drop_trailing_suffix"
+            ],
+            "others_enabled": [
+              "drop_trailing_clause",
+              "strip_wrappers"
+            ],
+            "difference_in_differences": 0.0
+          },
+          {
+            "rules": [
+              "drop_trailing_clause",
+              "drop_trailing_suffix"
+            ],
+            "others_enabled": [
+              "drop_trailing_parenthetical",
+              "strip_wrappers"
+            ],
+            "difference_in_differences": 0.0
+          }
+        ],
+        "hypotheses": [],
+        "grading": "registered_benchmark_binary_primary_metric",
+        "primary_metric": "exact_match"
+      }
+    }
+  ],
+  "comparison": {
+    "valid": true,
+    "n": 4,
+    "before_score": 1.0,
+    "after_score": 1.0,
+    "regressions": []
+  }
+}
+```
+
+<!-- rsi-source:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00015-repair:4326f94ae740a3348c63a58bd5f865e637ff73d650a0a7d543f8c7bceaa7fad4 -->
+
+<!-- rsi-event:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00015-repair -->
+
+## public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00015-repair · Task 修复检查
+
+原始记录：[00015-repair.json](../runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/trajectories/00015-repair.json)
+
+```text
+{
+  "step": 0,
+  "attempt": 0,
+  "before_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+  "after_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+  "accepted_on_train": false,
+  "frozen_boundary_check": {
+    "valid": true,
+    "n": 4,
+    "before_score": 1.0,
+    "after_score": 1.0,
+    "regressions": []
+  },
+  "problem": null,
+  "before_score": 1.0,
+  "after_score": 0.875
+}
+```
+
+<!-- rsi-source:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00021-audit:4510e15bc973aa5d3e2507d1c93173939ed47411744394d81eb96d063fb9f1a5 -->
+
+<!-- rsi-event:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00021-audit -->
+
+## public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00021-audit · Task 组合审计决定
+
+原始记录：[00021-audit.json](../runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/trajectories/00021-audit.json)
+
+```text
+{
+  "step": 0,
+  "baseline_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef",
+  "candidate_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+  "changed_paths": [
+    "agent.yaml",
+    "middleware/answer_shape.py",
+    "skills/main.md"
+  ],
+  "task_ids": [
+    "5ae53b545542990ba0bbb23c",
+    "5ac4a94a5542996feb3fe92b",
+    "5a80071f5542992bc0c4a684",
+    "5ab4e48655429942dd415f9c",
+    "5abd68b45542993062266c77",
+    "5ae135fb55429920d523431f",
+    "5ab2f4c95542991669774155",
+    "5a7b6e1d5542997c3ec9716e"
+  ],
+  "variants": [
+    {
+      "paths": [],
+      "snapshot_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef",
+      "score": 0.5,
+      "per_task_delta": {
+        "5ae53b545542990ba0bbb23c": 0.0,
+        "5ac4a94a5542996feb3fe92b": 0.0,
+        "5a80071f5542992bc0c4a684": 0.0,
+        "5ab4e48655429942dd415f9c": 0.0,
+        "5abd68b45542993062266c77": 0.0,
+        "5ae135fb55429920d523431f": 0.0,
+        "5ab2f4c95542991669774155": 0.0,
+        "5a7b6e1d5542997c3ec9716e": 0.0
+      },
+      "regressions": 0
+    },
+    {
+      "paths": [
+        "middleware/answer_shape.py"
+      ],
+      "snapshot_id": "875869d84c40a0e2de2d8adaae97f044ad88013ccbd66be4771a063dcba6091f",
+      "score": 0.375,
+      "per_task_delta": {
+        "5ae53b545542990ba0bbb23c": 0.0,
+        "5ac4a94a5542996feb3fe92b": 0.0,
+        "5a80071f5542992bc0c4a684": 0.0,
+        "5ab4e48655429942dd415f9c": 0.0,
+        "5abd68b45542993062266c77": 0.0,
+        "5ae135fb55429920d523431f": -1.0,
+        "5ab2f4c95542991669774155": 0.0,
+        "5a7b6e1d5542997c3ec9716e": 0.0
+      },
+      "regressions": 1
+    },
+    {
+      "paths": [
+        "agent.yaml",
+        "middleware/answer_shape.py"
+      ],
+      "snapshot_id": "b93527d5a0500c51b8ef4ebf241ddec7d1b8051d46d4d39c6084a654bdbfc055",
+      "score": 0.5,
+      "per_task_delta": {
+        "5ae53b545542990ba0bbb23c": 0.0,
+        "5ac4a94a5542996feb3fe92b": 0.0,
+        "5a80071f5542992bc0c4a684": 0.0,
+        "5ab4e48655429942dd415f9c": 0.0,
+        "5abd68b45542993062266c77": 0.0,
+        "5ae135fb55429920d523431f": 0.0,
+        "5ab2f4c95542991669774155": 0.0,
+        "5a7b6e1d5542997c3ec9716e": 0.0
+      },
+      "regressions": 0
+    },
+    {
+      "paths": [
+        "skills/main.md"
+      ],
+      "snapshot_id": "c05f6cee002d2bb325744d0c7fc01e753616ecec384082ecb134d7e2b8c175f6",
+      "score": 0.625,
+      "per_task_delta": {
+        "5ae53b545542990ba0bbb23c": 0.0,
+        "5ac4a94a5542996feb3fe92b": 0.0,
+        "5a80071f5542992bc0c4a684": 0.0,
+        "5ab4e48655429942dd415f9c": 0.0,
+        "5abd68b45542993062266c77": 1.0,
+        "5ae135fb55429920d523431f": -1.0,
+        "5ab2f4c95542991669774155": 1.0,
+        "5a7b6e1d5542997c3ec9716e": 0.0
+      },
+      "regressions": 1
+    },
+    {
+      "paths": [
+        "middleware/answer_shape.py",
+        "skills/main.md"
+      ],
+      "snapshot_id": "d77e9506d8c60ad29d3c2af2d4294d10ec489f9e54e089337dedeea56f4dac07",
+      "score": 0.625,
+      "per_task_delta": {
+        "5ae53b545542990ba0bbb23c": 0.0,
+        "5ac4a94a5542996feb3fe92b": 0.0,
+        "5a80071f5542992bc0c4a684": 0.0,
+        "5ab4e48655429942dd415f9c": 1.0,
+        "5abd68b45542993062266c77": 0.0,
+        "5ae135fb55429920d523431f": -1.0,
+        "5ab2f4c95542991669774155": 1.0,
+        "5a7b6e1d5542997c3ec9716e": 0.0
+      },
+      "regressions": 1
+    },
+    {
+      "paths": [
+        "agent.yaml",
+        "middleware/answer_shape.py",
+        "skills/main.md"
+      ],
+      "snapshot_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+      "score": 0.5,
+      "per_task_delta": {
+        "5ae53b545542990ba0bbb23c": 0.0,
+        "5ac4a94a5542996feb3fe92b": 0.0,
+        "5a80071f5542992bc0c4a684": 0.0,
+        "5ab4e48655429942dd415f9c": 0.0,
+        "5abd68b45542993062266c77": 0.0,
+        "5ae135fb55429920d523431f": -1.0,
+        "5ab2f4c95542991669774155": 1.0,
+        "5a7b6e1d5542997c3ec9716e": 0.0
+      },
+      "regressions": 1
+    }
+  ],
+  "invalid_variants": [
+    {
+      "paths": [
+        "agent.yaml"
+      ],
+      "problem": "missing registered middleware: answer_shape"
+    },
+    {
+      "paths": [
+        "agent.yaml",
+        "skills/main.md"
+      ],
+      "problem": "missing registered middleware: answer_shape"
+    }
+  ],
+  "retention_task_ids": [],
+  "retention_checks": [],
+  "leave_one_out": {
+    "agent.yaml": -0.125,
+    "middleware/answer_shape.py": null,
+    "skills/main.md": 0.0
+  },
+  "selected_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef",
+  "selected_paths": []
+}
+```
+
+<!-- rsi-source:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00023-meta_decision:d04bca3b712e12af8dfda72aa278ca672b261f791757ff77a22fa017094afcba -->
+
+<!-- rsi-event:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00023-meta_decision -->
+
+## public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00023-meta_decision · Meta 自身换版决定
+
+原始记录：[00023-meta_decision.json](../runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/trajectories/00023-meta_decision.json)
+
+```text
+{
+  "step": 0,
+  "accepted": false,
+  "reason": "meta_self_update_disabled"
+}
+```
+
+<!-- rsi-source:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00024-decision:32f25c76db7977fa0515d09c3b9aebc4e57415d433fb95cf2b080f5d22291751 -->
+
+<!-- rsi-event:public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00024-decision -->
+
+## public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00024-decision · Task 选择或无修改决定
+
+原始记录：[00024-decision.json](../runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/trajectories/00024-decision.json)
+
+```text
+{
+  "kind": "promote",
+  "parent_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef",
+  "candidate_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef",
+  "accepted": false,
+  "audit_rounds": 1
+}
+```

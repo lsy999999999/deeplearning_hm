@@ -12,10 +12,14 @@ import difflib
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 
 from filelock import FileLock
 from flashrsi.algorithms.meta_harness._journal import render_event
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from public_evidence import public_evidence
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "results/RSI_ITERATIONS.md"
@@ -98,9 +102,9 @@ def native_entries(directory, output):
         label = record.stem.split("-", 1)[-1]
         if label in labels:
             yield (
-                f"{directory.name}/{record.stem}",
+                f"public-v1/{directory.name}/{record.stem}",
                 label,
-                read(record),
+                public_evidence(read(record)),
                 link(record, output),
             )
 

@@ -144,7 +144,9 @@ def svg_diagram(run):
             text(
                 24,
                 y + 112,
-                f"Meta 更新：{'采用' if meta['accepted'] else '保留'} {(picked or '未记录')[:8]} · {gain_label}",
+                "Meta 固定：本次关闭自身更新"
+                if meta.get("reason") == "meta_self_update_disabled"
+                else f"Meta 更新：{'采用' if meta['accepted'] else '保留'} {(picked or '未记录')[:8]} · {gain_label}",
                 "small",
             )
         current, previous_bottom = selected_id, y + 90

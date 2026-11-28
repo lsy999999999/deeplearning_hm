@@ -1,0 +1,179 @@
+{
+  "status": "frozen_before_model_calls",
+  "source_commit": "96d694025cae8e2e7e66b837f03c6f6beaf89d89",
+  "config": "configs/fixed_meta_diagnosis_20261128.yaml",
+  "splits": {
+    "train": [
+      {
+        "task_id": "5a74397055429974ef308bbe",
+        "content_sha256": "90b1f8bf4100e961a77bf3eec2608a372c35807d2d556e75889b903fab4a7565",
+        "question_checksum": "f880bb304280a3a39b11802ff60f33a9577e2e500bcfa04afe63a6f8d17f39b8"
+      },
+      {
+        "task_id": "5abc5955554299114383a118",
+        "content_sha256": "e55c8547d03b64a5eac34eeb0db18761008cda248494ea5f52858ddc12789188",
+        "question_checksum": "f8a5afc7fdba47ca606fdcef3045f59cbea5cedce855a7c2a90c8af98641ee78"
+      },
+      {
+        "task_id": "5ab30ebf554299753aec592c",
+        "content_sha256": "96533d97bc41e8597a0eb264b0c953a17eac69fd858069070a72af7255978861",
+        "question_checksum": "e32f66d7f0b005a5f840aae6abc52c23bca06269835b21e666ad3b3da25edd20"
+      },
+      {
+        "task_id": "5ae4f3c455429960a22e0221",
+        "content_sha256": "52036cf719729d075c4143a305b12aa5f4ae3d51d9ca0ed6a954ad3886d6cf8a",
+        "question_checksum": "9b6c97e9f98122ec0f8506c6b7221a1a98785c4378fbc263543638945d703b50"
+      },
+      {
+        "task_id": "5a77a41a5542997042120ab9",
+        "content_sha256": "0900c1fc5129bd9fdb35e65221ab5758ed0a0f86a1e07987b5607a58d0c68b40",
+        "question_checksum": "d5c1bbdde30da6d2bdf9373f2fe49e08aadde6eb0159223c7e8d8d750d64ee0f"
+      },
+      {
+        "task_id": "5abc8507554299700f9d78de",
+        "content_sha256": "f8364f837733be9ee26ba6e2bfa871cfdf5c3bfdd19b83700909a9874cc26e4e",
+        "question_checksum": "c9ac385c37da4b1ebd6a780cc2740514a836a67235f157e9113e1bcaeaf7698c"
+      },
+      {
+        "task_id": "5adfda5255429942ec259b5e",
+        "content_sha256": "07d0e030fc1735d62677352d0c72a2a5610a65eca6fe19a4a3e034835b11d891",
+        "question_checksum": "c2b2934fa0586548349897c745b6c1e341665f289269d5762eb21778abed025e"
+      },
+      {
+        "task_id": "5ae763aa5542995703ce8c09",
+        "content_sha256": "d731c79b277887b326f0fe13e15ac7cba72203dbf4150213403d89f1f57d9fd0",
+        "question_checksum": "6658f45cd86e415f8563767eaa16493234c3e789a11261d20f62cb688fdc5387"
+      }
+    ],
+    "dev": [
+      {
+        "task_id": "5ae53b545542990ba0bbb23c",
+        "content_sha256": "70bb38a2f1d0136a0137e75726117851ab8f72779b7145b75d0ea39e9ed00a13",
+        "question_checksum": "9edbf184aa319d77e2875242d51833b531d14fc6afa3cf97c0822eaa640cfe37"
+      },
+      {
+        "task_id": "5ac4a94a5542996feb3fe92b",
+        "content_sha256": "19e3ab2ffc79671d0cb77f6e4b34f01624cdb0716e76d2dcea55b614dd7049c6",
+        "question_checksum": "f3257bde14b7f1f66542b29ee6733aeabbc4eb7e1e2e824e5eef6ad4100fc4b4"
+      },
+      {
+        "task_id": "5a80071f5542992bc0c4a684",
+        "content_sha256": "642e1e79902267ce4af8c95b8af511c682723bc5dc8b630b73bc423ef5589e90",
+        "question_checksum": "677e32612c26cb19061928ecdf50ca43d9ac448709439138722bdcc0766e0de5"
+      },
+      {
+        "task_id": "5ab4e48655429942dd415f9c",
+        "content_sha256": "234790fdf443878f4a48f22190cb73959759aff6e1fc4043d6f052cb3e5a2709",
+        "question_checksum": "3bc5a99485c73d390607ee55f631054731aec1dac7f222a3aa857d4344831ce4"
+      },
+      {
+        "task_id": "5abd68b45542993062266c77",
+        "content_sha256": "afbe7900dd1871fa614bd86f7e8c0f53cca80449eba2e9eb5c74fc6367abfb42",
+        "question_checksum": "979027e3e2dc7e3c550835282b32b17ccb528a04430412badfd526950764ccbc"
+      },
+      {
+        "task_id": "5ae135fb55429920d523431f",
+        "content_sha256": "ed3fdb34e279c5d916fd739dcbca9f1a8e24dac9bdb4841f086dcdc130e2a11d",
+        "question_checksum": "f789948e3ac7a35de4aad4a9ff16f666518b47cd07d1eaf33dccd9b54fd30140"
+      },
+      {
+        "task_id": "5ab2f4c95542991669774155",
+        "content_sha256": "d78bf972bf67726ba0a9aa2b19b5bb2448a321e9ef5e3798087319a5553231c0",
+        "question_checksum": "c259f4bde2d31ad5e75d80a496cbae5dd80e344b76648d144b8b324f1ec5b26c"
+      },
+      {
+        "task_id": "5a7b6e1d5542997c3ec9716e",
+        "content_sha256": "a8ef9094deb086ed901adc0ec4d6aa0b88716ce2191640198f2bccf529052feb",
+        "question_checksum": "00f482146ab5814ba2092e44effdb54af3f43988562759781b6f9334545bddae"
+      }
+    ],
+    "test": [
+      {
+        "task_id": "5a90997b5542995651fb51af",
+        "content_sha256": "b1610436cb5a5cad41bae0d2a0696407af08c1293b4defdc144fb127606cbb28",
+        "question_checksum": "f12cda9874af3b60ba2016c1840e76578fa9f0f4ee432caad66c397a9e6ac008"
+      },
+      {
+        "task_id": "5ae773eb5542997b22f6a777",
+        "content_sha256": "4623db23fb389cbc3231bb2cf9f07a9704394611490ba83dcb3976e2030a8d82",
+        "question_checksum": "f961e1f909ea8295da55df1e759bdc0c5e4e0c2548b83bf76c091030ac24f567"
+      },
+      {
+        "task_id": "5adc53f75542996e6852530a",
+        "content_sha256": "afa3417ccf766902057611b1178ac26e4a648eea3af50ccaf05d1cb190dc201c",
+        "question_checksum": "2b1ddccf32ba8f1c3fe569fb91593075b4ddd7b5ce714fe36cfafeed27eb4848"
+      },
+      {
+        "task_id": "5a80b9ae5542992bc0c4a7eb",
+        "content_sha256": "ed22552e50d1d8b04914f51cf213364ff636e268a37efd54f54c363cf4dc781c",
+        "question_checksum": "d580116ef74c09326aa84b5ec3c5e6e0e12eff2a77128755d77019a38499d083"
+      },
+      {
+        "task_id": "5adff1a255429925eb1afb5e",
+        "content_sha256": "ad06ad8002bf5b9f7ba8ca1e39c8c4eb4615259805a895ef8727ccfbef1f076d",
+        "question_checksum": "ded09b19a2574e550cbb88f6543f29418a5b917ebe77e96e418aab0cff898c11"
+      },
+      {
+        "task_id": "5a8d841955429941ae14dfe6",
+        "content_sha256": "9a1d94c80a6eaedd0f0e50a8e1222532c32ef879d7a643677ab5dacd5f4e76e4",
+        "question_checksum": "6d949bbee0f108fd80084d664dd3d9e76bd594269848e16f7a1f385a5bed1b9a"
+      },
+      {
+        "task_id": "5a7a6ec05542990783324f49",
+        "content_sha256": "4269583d2922b05ebf6f9b66773e1c48c9864a1a00cb04c4f7c3542f07f6c11f",
+        "question_checksum": "1c0586dba330e2e9ab78271aa206fc554889261b27e56eee5ea37e6b89f78a0c"
+      },
+      {
+        "task_id": "5a7e21165542995ed0d166a2",
+        "content_sha256": "7d2b4705af8e5c832b43f035d82462d0ed6143c939b34f270723ec3c95b0349e",
+        "question_checksum": "c5b8f3d712594364146b84b5e5a27fcbdb0a92eda76ba34c471e13ed4624cc6d"
+      },
+      {
+        "task_id": "5ab8a7f65542991b5579efca",
+        "content_sha256": "1ec54f841ed8153a435a2306ae746e8774e6e2936edb3b6cd2fe7b2240fccdb4",
+        "question_checksum": "3cdbb9f62ff97259e61337dd8acf45ed80c5957e5fa06bf0d8c914a48a7bc545"
+      },
+      {
+        "task_id": "5a812cd555429926c1cdacfc",
+        "content_sha256": "efbce9dd547b3441adcd94c0035ee3b56e95341accad964e5b52c54ef1a628d8",
+        "question_checksum": "59ae50df7a26a9ce06a4b2e2a12a85ff99f9c9e663f08c7a66b0c13da06916c9"
+      },
+      {
+        "task_id": "5abbc4d255429931dba144fe",
+        "content_sha256": "1c249e81317a9d95dd9bded0d20f6f268dcf5ee38dabaaef2628dae4a865acf3",
+        "question_checksum": "65a774f3658d172870e49feb38d4b25e84124a7b2db5fd2a7d54507150258c50"
+      },
+      {
+        "task_id": "5a8febb555429916514e73e4",
+        "content_sha256": "9d566092480b3b807541cc4ca8b8554c2549b96e00aed7bd84bce3b690c1c96f",
+        "question_checksum": "cbfe33384d0dffca26880d1363ca9f80641a36a54fa2c964e9db7c8c7fb0bb0e"
+      },
+      {
+        "task_id": "5ab56f4b554299637185c599",
+        "content_sha256": "055fea1e9a069a4a48a70c16f90ef89985bf57922967b36268525bf55beb4fe4",
+        "question_checksum": "18e3d0e6a2f16c487b9250a5b9a7c763a5dd78b931aad040159876760da72299"
+      },
+      {
+        "task_id": "5ab811e95542995dae37ea22",
+        "content_sha256": "27e21597eea4d66d3839f5ddd1764ec8ff4904a5c872ee26ac28a052f5a4e91d",
+        "question_checksum": "5df8ec510ecc69c30ce4c80b68e5db0f84b16a4cd9eee07b2f97d2de3f3343d1"
+      },
+      {
+        "task_id": "5abd5a135542992ac4f3829f",
+        "content_sha256": "dc6892c1767675ef0914a459902c277c44396182e5dee6f3b89dde40dfc4f7f1",
+        "question_checksum": "84d3ed1f3be76692bbea37cfb5eb6e8cc6db1e2eb1d82a583fb1953330c1e3aa"
+      },
+      {
+        "task_id": "5abc17c25542993a06baf85b",
+        "content_sha256": "2b55030e0a31c15417881712d040817e799f8087db754a8f814fed6c503e03f6",
+        "question_checksum": "c30ade6cdb681a801c7969adfa8fff898b52c2c7eff29f6fa61a59a52ce986bf"
+      }
+    ]
+  },
+  "historical_records_checked": 197,
+  "historical_task_ids": 40,
+  "overlap": 0,
+  "meta_self_update": false,
+  "scope": "one consecutive natural candidate; unsupported diagnosis remains a result",
+  "test_feedback_to_repair": false
+}

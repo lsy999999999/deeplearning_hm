@@ -43,5 +43,14 @@
   "recursive_ca_rsi-miniagent-hotpotqa-20261128-163113-702609/00059-diagnosis": "8eebaa02f1d29d3c8fa3502f1ecf8e98d01473b551a2eb75d0fbecd2319813b1",
   "recursive_ca_rsi-miniagent-hotpotqa-20261128-163113-702609/00062-repair": "0c59e2e99303f38b7e76734b2259e5539301b7cf02c5dbf02c16dbf264d9eeb3",
   "recursive_ca_rsi-miniagent-hotpotqa-20261128-163113-702609/00080-meta_decision": "a8482359b41ccf89c9e3794537beccfa100ea75d526c4845fa12a6f39bead432",
-  "recursive_ca_rsi-miniagent-hotpotqa-20261128-163113-702609/00086-meta_decision": "f3f5b7295aa63ff1da9e39ef73c35993144b889bbf6c6bbb74b1d994d0b97781"
+  "recursive_ca_rsi-miniagent-hotpotqa-20261128-163113-702609/00086-meta_decision": "f3f5b7295aa63ff1da9e39ef73c35993144b889bbf6c6bbb74b1d994d0b97781",
+  "public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00005-code_change": "0601358d24f271a2b82dc2af1b1967a9402c1327bc8b86e5a297906d578c2ac7",
+  "public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00009-diagnosis": "06defcbade63e9a90433577e6d11cc7fdf8c0262c6a81871699303665bb1c504",
+  "public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00010-rule_intervention": "a64a9ce3868663329c7d17021dad1bb5f2a4de2550c321c4b4547e0e08e7246e",
+  "public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00012-code_change": "d2906d62ec2d624e56c94591f57d0d7ca0c3fa89ec7c783814c2a683d4a55a8c",
+  "public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00014-rule_intervention": "7bece79222705039faa16492cbef0d87aca6420866f41529378c38d5898d17a5",
+  "public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00015-repair": "4326f94ae740a3348c63a58bd5f865e637ff73d650a0a7d543f8c7bceaa7fad4",
+  "public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00021-audit": "4510e15bc973aa5d3e2507d1c93173939ed47411744394d81eb96d063fb9f1a5",
+  "public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00023-meta_decision": "d04bca3b712e12af8dfda72aa278ca672b261f791757ff77a22fa017094afcba",
+  "public-v1/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717/00024-decision": "32f25c76db7977fa0515d09c3b9aebc4e57415d433fb95cf2b080f5d22291751"
 }

@@ -6592,6 +6592,823 @@
       "test_tasks": 16,
       "status": "finished",
       "diagram": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1000\" height=\"776\" style=\"max-width:100%;height:auto\" viewBox=\"0 0 1000 776\" role=\"img\" aria-labelledby=\"diagram-title diagram-desc\">\n<title id=\"diagram-title\">Recursive CA-RSI 逐轮进化选择</title>\n<desc id=\"diagram-desc\">左侧为每轮提出的候选；右侧主线为该轮选择后实际保留的版本。候选标注其真实父版本，最终测试分数单独展示。</desc>\n<defs><marker id=\"evo-arrow\" markerWidth=\"8\" markerHeight=\"8\" refX=\"7\" refY=\"4\" orient=\"auto\"><path d=\"M1 1L7 4L1 7\" fill=\"none\" stroke=\"#687481\" stroke-width=\"1.5\"/></marker></defs>\n<rect width=\"1000\" height=\"776\" fill=\"#fff\"/>\n<style>text{font-family:system-ui,\"Noto Sans CJK SC\",sans-serif;fill:#1e293b;font-size:17px}.small{font-size:15px;fill:#475569}.heading{font-size:23px;font-weight:600}.node{fill:#f8fafc;stroke:#ccd4dd;stroke-width:1.2}.chosen{fill:#e7f5ef;stroke:#8eb8a4;stroke-width:1.2}.link{fill:none;stroke:#687481;stroke-width:1.5;marker-end:url(#evo-arrow)}</style>\n<text x=\"24\" y=\"34\" class=\"heading\">Recursive CA-RSI · 4 轮进化</text>\n<text x=\"24\" y=\"62\" class=\"small\">DeepSeek-V4-Flash · seed 43 · 每轮使用不同的新开发题；右侧为保留版本</text>\n<rect x=\"520\" y=\"85\" width=\"450\" height=\"90\" rx=\"7\" class=\"node\"/>\n<text x=\"536\" y=\"112\" class=\"\">初始版本</text>\n<text x=\"536\" y=\"137\" class=\"small\">首轮新题基线：50.00%（1/2）</text>\n<text x=\"536\" y=\"162\" class=\"small\">Snapshot 539280bb6d</text>\n<rect x=\"24\" y=\"217\" width=\"390\" height=\"90\" rx=\"7\" class=\"node\"/>\n<text x=\"40\" y=\"244\" class=\"\">第 1 轮候选 · 3 个文件修改</text>\n<text x=\"40\" y=\"269\" class=\"small\">候选开发集：50.00%（1/2）</text>\n<text x=\"40\" y=\"294\" class=\"small\">候选 7d16eee3 · 父版本 539280bb</text>\n<rect x=\"520\" y=\"217\" width=\"450\" height=\"90\" rx=\"7\" class=\"node\"/>\n<text x=\"536\" y=\"244\" class=\"\">第 1 轮选择：保留原有版本</text>\n<text x=\"536\" y=\"269\" class=\"small\">保留版本开发集：50.00%（1/2） · 改正 0 / 退步 0</text>\n<text x=\"536\" y=\"294\" class=\"small\">Snapshot 539280bb6d</text>\n<path d=\"M745 175V212\" class=\"link\"/>\n<path d=\"M424 262H510\" class=\"link\"/>\n<text x=\"24\" y=\"329\" class=\"small\">Meta 更新：保留 539280bb · 验证不完整</text>\n<rect x=\"24\" y=\"349\" width=\"390\" height=\"90\" rx=\"7\" class=\"node\"/>\n<text x=\"40\" y=\"376\" class=\"\">第 2 轮候选 · 1 个文件修改</text>\n<text x=\"40\" y=\"401\" class=\"small\">候选开发集：0.00%（0/2）</text>\n<text x=\"40\" y=\"426\" class=\"small\">候选 7649341b · 父版本 539280bb</text>\n<rect x=\"520\" y=\"349\" width=\"450\" height=\"90\" rx=\"7\" class=\"node\"/>\n<text x=\"536\" y=\"376\" class=\"\">第 2 轮选择：保留原有版本</text>\n<text x=\"536\" y=\"401\" class=\"small\">保留版本开发集：50.00%（1/2） · 改正 0 / 退步 0</text>\n<text x=\"536\" y=\"426\" class=\"small\">Snapshot 539280bb6d</text>\n<path d=\"M745 307V344\" class=\"link\"/>\n<path d=\"M424 394H510\" class=\"link\"/>\n<text x=\"24\" y=\"461\" class=\"small\">Meta 更新：保留 539280bb · Δ=+0.000</text>\n<rect x=\"24\" y=\"481\" width=\"390\" height=\"90\" rx=\"7\" class=\"node\"/>\n<text x=\"40\" y=\"508\" class=\"\">第 3 轮候选 · 1 个文件修改</text>\n<text x=\"40\" y=\"533\" class=\"small\">候选开发集：50.00%（1/2）</text>\n<text x=\"40\" y=\"558\" class=\"small\">候选 f9172501 · 父版本 539280bb</text>\n<rect x=\"520\" y=\"481\" width=\"450\" height=\"90\" rx=\"7\" class=\"chosen\"/>\n<text x=\"536\" y=\"508\" class=\"\">第 3 轮选择：接受完整候选</text>\n<text x=\"536\" y=\"533\" class=\"small\">保留版本开发集：50.00%（1/2） · 改正 1 / 退步 0</text>\n<text x=\"536\" y=\"558\" class=\"small\">Snapshot f9172501c8</text>\n<path d=\"M745 439V476\" class=\"link\"/>\n<path d=\"M424 526H510\" class=\"link\"/>\n<text x=\"24\" y=\"593\" class=\"small\">Meta 更新：保留 539280bb · Δ=+0.000</text>\n<rect x=\"24\" y=\"613\" width=\"390\" height=\"90\" rx=\"7\" class=\"node\"/>\n<text x=\"40\" y=\"640\" class=\"\">第 4 轮候选 · 4 个文件修改</text>\n<text x=\"40\" y=\"665\" class=\"small\">修改文件数超限，未审计候选</text>\n<text x=\"40\" y=\"690\" class=\"small\">候选 be68bdd2 · 父版本 f9172501</text>\n<rect x=\"520\" y=\"613\" width=\"450\" height=\"90\" rx=\"7\" class=\"node\"/>\n<text x=\"536\" y=\"640\" class=\"\">第 4 轮选择：保留原有版本</text>\n<text x=\"536\" y=\"665\" class=\"small\">保留版本开发集：0.00%（0/2）</text>\n<text x=\"536\" y=\"690\" class=\"small\">Snapshot f9172501c8</text>\n<path d=\"M745 571V608\" class=\"link\"/>\n<path d=\"M424 658H510\" class=\"link\"/>\n<text x=\"24\" y=\"725\" class=\"small\">Meta 更新：保留 539280bb · 未进入验证</text>\n<text x=\"24\" y=\"753\" class=\"small\">最终版本 f9172501c8 · 最终测试 50.00% · 16 题（不参与选择） · Meta 539280bb</text>\n</svg>"
+    },
+    {
+      "name": "Recursive CA-RSI",
+      "meta_updates": [
+        {
+          "step": 0,
+          "accepted": false,
+          "reason": "meta_self_update_disabled"
+        }
+      ],
+      "diagnoses": [
+        {
+          "step": 0,
+          "attempt": 0,
+          "candidate_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+          "issues": [
+            {
+              "path": "middleware/answer_shape.py",
+              "kind": "answer-format mismatch (rule under-triggering)",
+              "claim": "The `_attested` guard blocks `drop_trailing_parenthetical` whenever the bare form is not verbatim in the supplied context. In 5abc5955554299114383a118 the model answered 'Midnight Madness (1980)' and the context contains 'Midnight Madness (film)' and 'Midnight Madness (album)' but never the bare string 'Midnight Madness' as a standalone span, so the rule no-ops and exact match fails (EM 0.0, F1 0.8). Same mechanism for 5ab30ebf554299753aec592c ('The Dressmaker (2015 film)' -> EM 0.0, F1 0.5), where the context only has 'The Dressmaker (2015 film)' and quoted '\"The Dressmaker\"'.",
+              "evidence_task_ids": [
+                "5abc5955554299114383a118",
+                "5ab30ebf554299753aec592c"
+              ],
+              "repair": "In `_drop_trailing_parenthetical`, treat the bare form as attested when it appears in the context as a prefix of a parenthesised occurrence, i.e. accept if `shorter` occurs in the haystack at all (substring match already does this) — the real defect is that the haystack is empty because `_evidence_for` never populates any of `_CONTEXT_KEYS`; add the supplied context/question text to the evidence dict passed to `ctx.apply_answer_rules` (e.g. include `ctx.question` under key 'question' and any supplied context under 'context'), so `_attested` is not vacuously true/false by accident.",
+              "verification": "Replay 5abc5955554299114383a118 and 5ab30ebf554299753aec592c with the rule enabled and assert the final output is exactly 'Midnight Madness' and 'The Dressmaker' respectively; also assert `_evidence_text(evidence, _CONTEXT_KEYS)` is non-empty for these cases."
+            },
+            {
+              "path": "middleware/answer_shape.py",
+              "kind": "answer-format mismatch (rule under-triggering)",
+              "claim": "`drop_trailing_clause` requires the shorter form to be attested, but `_evidence_for` supplies no context, so `_attested` returns True only because the haystack is empty — meaning the rule fires on syntax alone. It did fire correctly for 5abc8507554299700f9d78de ('To be, or not to be' -> 'To be'), but the same vacuous-attestation path means the guard provides no real protection; the observed pass is incidental to the empty-evidence fallback rather than to context checking.",
+              "evidence_task_ids": [
+                "5abc8507554299700f9d78de"
+              ],
+              "repair": "Populate the evidence dict with the supplied context (see previous issue) so `_attested` performs a real check; keep the syntactic fallback only when no context is available.",
+              "verification": "Unit-test `_drop_trailing_clause('To be, or not to be', {'context': <supplied context>})` returns 'To be' and that `_attested('To be', {'context': ...})` is True against the real context text."
+            },
+            {
+              "path": "middleware/answer_shape.py",
+              "kind": "reasoning error (model, not rule)",
+              "claim": "For 5ae4f3c455429960a22e0221 the model answered '2.08 km²' instead of '575 acres (2.08 km²)'. This is a model answer-selection error (dropped the primary unit), not a middleware fault: the measurement-parenthetical guard correctly preserved the full form when the model did emit it (after-run output '575 acres (2.08 km²)', EM 1.0). No rule change is warranted; the skill already instructs keeping values with units.",
+              "evidence_task_ids": [
+                "5ae4f3c455429960a22e0221"
+              ],
+              "repair": "No middleware change. Optionally strengthen skills/main.md wording that when a value has two unit forms, keep the full context span verbatim rather than one unit.",
+              "verification": "Replay 5ae4f3c455429960a22e0221 and confirm the model emits '575 acres (2.08 km²)' and the measurement guard leaves it unchanged (no_op on drop_trailing_parenthetical)."
+            },
+            {
+              "path": "middleware/answer_shape.py",
+              "kind": "uncertain hypothesis (no rule fault observed)",
+              "claim": "5ae763aa5542995703ce8c09 ('Dwight Schultz' vs 'William Dwight Schultz') and 5adfda5255429942ec259b5e ('Douglas County' vs 'Douglas') were fixed in the after-run, but the after-run also changed the skill prompt, so the improvement cannot be attributed to the middleware rules alone. The 'Douglas County' -> 'Douglas' fix is consistent with `drop_trailing_suffix`, but the audit shows no rule_replay event for that case, so causation is unverified.",
+              "evidence_task_ids": [
+                "5ae763aa5542995703ce8c09",
+                "5adfda5255429942ec259b5e"
+              ],
+              "repair": "No code change; treat as unverified. If desired, add a rule_replay assertion so suffix/name fixes are attributable to a specific rule.",
+              "verification": "Replay 5adfda5255429942ec259b5e with only `drop_trailing_suffix` enabled and confirm output 'Douglas'; replay 5ae763aa5542995703ce8c09 with all rules disabled to see whether the skill prompt alone yields the full name."
+            }
+          ],
+          "interventions": [],
+          "status": "hypothesis_not_verified"
+        }
+      ],
+      "repairs": [
+        {
+          "step": 0,
+          "attempt": 0,
+          "before_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+          "after_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+          "accepted_on_train": false,
+          "frozen_boundary_check": {
+            "valid": true,
+            "n": 4,
+            "before_score": 1.0,
+            "after_score": 1.0,
+            "regressions": []
+          },
+          "problem": null,
+          "before_score": 1.0,
+          "after_score": 0.875
+        }
+      ],
+      "final_worker_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef",
+      "method": "recursive_ca_rsi",
+      "run": "recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717",
+      "source": "runs/fixed_meta_diagnosis_20261128/recursive_ca_rsi-miniagent-hotpotqa-20261128-175511-844717",
+      "seed": 20261129,
+      "model": "DeepSeek-V4-Flash",
+      "worker_model": "DeepSeek-V4-Flash",
+      "planned_rounds": 1,
+      "metric": "exact_match",
+      "max_regressions": 0,
+      "rounds": [
+        {
+          "step": 0,
+          "source": "00021-audit.json",
+          "baseline_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef",
+          "candidate_id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+          "selected_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef",
+          "selected_paths": [],
+          "changes": [
+            {
+              "path": "agent.yaml",
+              "operation": "修改",
+              "component": "config",
+              "diff": "--- 原版/agent.yaml\n+++ 候选/agent.yaml\n@@ -3,7 +3,8 @@\n   extract: prompts/extract.md\n tools:\n   - shell\n-middlewares: []\n+middlewares:\n+  - answer_shape\n skills:\n   - main\n sub_agents: []\n",
+              "summary": ""
+            },
+            {
+              "path": "middleware/answer_shape.py",
+              "operation": "新增",
+              "component": "code",
+              "diff": "--- 原版/middleware/answer_shape.py\n+++ 候选/middleware/answer_shape.py\n@@ -0,0 +1,206 @@\n+\"\"\"Deterministic answer-shape normalization for short-answer tasks.\n+\n+Observed failure mode (supplied-context multi-hop QA): the model finds the\n+right entity but returns it with extra surface material, so exact match fails\n+while F1 stays high, e.g.\n+\n+    \"Midnight Madness (1980)\"  vs  \"Midnight Madness\"\n+    \"Douglas County\"           vs  \"Douglas\"\n+    \"To be, or not to be\"      vs  \"To be\"\n+\n+The rules below only *remove* material that the answer itself shows to be\n+non-essential (a trailing parenthetical, a trailing qualifier, a trailing\n+clause). They never invent, reorder or substitute content, and every rule is a\n+pure function of (answer, evidence) with no model calls and no I/O.\n+\n+`evidence` is the runtime's structured evidence dict. When it carries the\n+supplied context under a known key, a rule may additionally check that the\n+shorter form is attested verbatim in that context; otherwise the rule falls\n+back to purely syntactic checks. Nothing here depends on task IDs.\n+\"\"\"\n+\n+from __future__ import annotations\n+\n+import re\n+\n+from runtime.rule_audit import Rule\n+\n+# Keys under which the runtime may expose the supplied context / question.\n+_CONTEXT_KEYS = (\"context\", \"supplied_context\", \"evidence\", \"documents\", \"passages\")\n+\n+# A short answer is a name, a date, a number or a short phrase. Anything much\n+# longer is prose and must not be trimmed by these rules.\n+_MAX_WORDS = 12\n+_MAX_CHARS = 120\n+\n+# Trailing parenthetical: \"Midnight Madness (1980)\", \"Foo (film)\".\n+_TRAILING_PAREN = re.compile(r\"\\s*\\([^()]{0,60}\\)\\s*$\")\n+\n+# A parenthetical that carries a measurement is part of the value, not a\n+# disambiguator: \"575 acres (2.08 km²)\" must stay intact.\n+_MEASUREMENT_PAREN = re.compile(\n+    r\"\\(\\s*[^()]{0,40}?(?:\\d|km|mi|m\\b|ft|kg|lb|ha|acres|metres|meters|\"\n+    r\"square|sq|°|%|USD|EUR|GBP)[^()]{0,40}?\\)\\s*$\",\n+    re.IGNORECASE,\n+)\n+\n+# Trailing qualifier after a comma: \"To be, or not to be\", \"Douglas, Minnesota\".\n+_TRAILING_CLAUSE = re.compile(r\",\\s+[^,]{1,80}$\")\n+\n+# Trailing administrative suffix: \"Douglas County\" -> \"Douglas\".\n+_TRAILING_SUFFIX = re.compile(\n+    r\"\\s+(?:County|Parish|Borough|Municipality|Township|Province|Prefecture)$\",\n+    re.IGNORECASE,\n+)\n+\n+# Leading article that short-answer keys normally omit. Only applied when the\n+# remainder is a single capitalised token (\"The Dressmaker\" is a title and must\n+# survive; \"The Beatles\" likewise).\n+_LEADING_ARTICLE = re.compile(r\"^(?:The|A|An)\\s+(\\S+)$\")\n+\n+# Wrapping quotes / markdown emphasis around the whole answer.\n+_WRAPPERS = (\n+    ('\"', '\"'),\n+    (\"'\", \"'\"),\n+    (\"\\u201c\", \"\\u201d\"),\n+    (\"**\", \"**\"),\n+    (\"`\", \"`\"),\n+)\n+\n+\n+def _evidence_text(evidence, keys) -> str:\n+    \"\"\"Concatenate any supplied context/question strings found in evidence.\"\"\"\n+    if not isinstance(evidence, dict):\n+        return \"\"\n+    parts = []\n+    for key in keys:\n+        value = evidence.get(key)\n+        if isinstance(value, str):\n+            parts.append(value)\n+        elif isinstance(value, (list, tuple)):\n+            parts.extend(x for x in value if isinstance(x, str))\n+    return \"\\n\".join(parts)\n+\n+\n+def _is_short_answer(answer: str) -> bool:\n+    text = answer.strip()\n+    if not text or len(text) > _MAX_CHARS:\n+        return False\n+    if \"\\n\" in text:\n+        return False\n+    return len(text.split()) <= _MAX_WORDS\n+\n+\n+def _attested(shorter: str, evidence) -> bool:\n+    \"\"\"True when the shorter form appears verbatim in supplied context.\n+\n+    With no supplied context the check is vacuous: the rule then relies on its\n+    syntactic guard alone, which only ever removes trailing material.\n+    \"\"\"\n+    haystack = _evidence_text(evidence, _CONTEXT_KEYS)\n+    if not haystack:\n+        return True\n+    return shorter.casefold() in haystack.casefold()\n+\n+\n+def _strip_wrappers(answer: str, evidence) -> str:\n+    text = answer.strip()\n+    for left, right in _WRAPPERS:\n+        if (\n+            len(text) > len(left) + len(right)\n+            and text.startswith(left)\n+            and text.endswith(right)\n+        ):\n+            inner = text[len(left) : len(text) - len(right)].strip()\n+            if inner:\n+                return inner\n+    return answer\n+\n+\n+def _drop_trailing_parenthetical(answer: str, evidence) -> str:\n+    text = answer.strip()\n+    if not _is_short_answer(text):\n+        return answer\n+    match = _TRAILING_PAREN.search(text)\n+    if not match:\n+        return answer\n+    if _MEASUREMENT_PAREN.search(text):\n+        return answer\n+    shorter = text[: match.start()].strip()\n+    # Keep at least one word and require the bare form to be attested.\n+    if not shorter or not _attested(shorter, evidence):\n+        return answer\n+    return shorter\n+\n+\n+def _drop_trailing_clause(answer: str, evidence) -> str:\n+    text = answer.strip()\n+    if not _is_short_answer(text):\n+        return answer\n+    match = _TRAILING_CLAUSE.search(text)\n+    if not match:\n+        return answer\n+    shorter = text[: match.start()].strip()\n+    if not shorter or not _attested(shorter, evidence):\n+        return answer\n+    return shorter\n+\n+\n+def _drop_trailing_suffix(answer: str, evidence) -> str:\n+    text = answer.strip()\n+    if not _is_short_answer(text):\n+        return answer\n+    match = _TRAILING_SUFFIX.search(text)\n+    if not match:\n+        return answer\n+    shorter = text[: match.start()].strip()\n+    if not shorter or not _attested(shorter, evidence):\n+        return answer\n+    return shorter\n+\n+\n+def _drop_leading_article(answer: str, evidence) -> str:\n+    text = answer.strip()\n+    if not _is_short_answer(text):\n+        return answer\n+    match = _LEADING_ARTICLE.match(text)\n+    if not match:\n+        return answer\n+    shorter = match.group(1).strip()\n+    if not shorter or not _attested(shorter, evidence):\n+        return answer\n+    return shorter\n+\n+\n+# Ordered pipeline: each rule sees the previous rule's output. Order matters —\n+# wrappers first, then the most specific trailing material, then the generic\n+# clause split, then the leading article. The audit protocol bounds a pipeline\n+# at four rules, so the two trailing-suffix cases share one rule.\n+AUDIT_RULES = [\n+    Rule(\"strip_wrappers\", _strip_wrappers),\n+    Rule(\"drop_trailing_parenthetical\", _drop_trailing_parenthetical),\n+    Rule(\"drop_trailing_clause\", _drop_trailing_clause),\n+    Rule(\"drop_trailing_suffix\", _drop_trailing_suffix),\n+]\n+\n+\n+def _evidence_for(ctx) -> dict:\n+    \"\"\"Structured evidence handed to the pure rules.\n+\n+    Only data the runtime already holds is exposed; the rules never read the\n+    filesystem or call a model.\n+    \"\"\"\n+    return {\n+        \"question\": getattr(ctx, \"question\", \"\") or \"\",\n+        \"turn\": getattr(ctx, \"turn\", 0),\n+        \"tool_calls\": len(getattr(ctx, \"tool_history\", []) or []),\n+    }\n+\n+\n+async def before_final(answer, ctx):\n+    \"\"\"Apply the declared answer rules at the final-answer boundary.\"\"\"\n+    evidence = _evidence_for(ctx)\n+    shaped = ctx.apply_answer_rules(answer, evidence, AUDIT_RULES)\n+    if shaped != answer:\n+        return {\"action\": \"replace\", \"answer\": shaped}\n+    return {\"action\": \"accept\"}\n",
+              "summary": ""
+            },
+            {
+              "path": "skills/main.md",
+              "operation": "修改",
+              "component": "skill",
+              "diff": "--- 原版/skills/main.md\n+++ 候选/skills/main.md\n@@ -4,3 +4,28 @@\n entity or value, check the supporting evidence, and answer concisely. Follow any\n explicit output-format requirements. Describe tool use only when it actually\n occurred, and distinguish supplied evidence from assumptions.\n+\n+## Short answers\n+\n+When the task asks for a short answer (a name, title, date, number, place or\n+short phrase), return the minimal string that answers it:\n+\n+- No trailing parentheticals or disambiguators: `Midnight Madness`, not\n+  `Midnight Madness (1980)`.\n+- No trailing qualifiers or clauses: `To be`, not `To be, or not to be`.\n+- No administrative suffix the question did not ask for: `Douglas`, not\n+  `Douglas County`, when the question asks which county.\n+- No leading article, no surrounding quotes, no markdown, no explanation, no\n+  \"The answer is ...\" preamble.\n+- Copy the wording of the supplied context for the answer span; do not\n+  paraphrase names or titles.\n+\n+If the question asks for a full name, a full title, or a value with units, keep\n+the complete form exactly as the context states it (for example\n+`575 acres (2.08 km²)` or `William Dwight Schultz`).\n+\n+## Multi-hop questions\n+\n+Resolve each hop against the supplied context before answering: find the\n+intermediate entity, then the attribute the question actually asks for. Answer\n+the final hop only, not the intermediate entity.\n",
+              "summary": ""
+            }
+          ],
+          "variants": [
+            {
+              "id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef",
+              "paths": [],
+              "source": "00021-audit.json",
+              "score": 0.5,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0,
+              "tasks": [
+                {
+                  "id": "5ae53b545542990ba0bbb23c",
+                  "question": "Where does the hotel and casino located in which Bill Cosby's third album was recorded?",
+                  "gold": "Las Vegas Strip in Paradise",
+                  "output": "Paradise, Nevada (on the Las Vegas Strip)",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Paradise, Nevada (on the Las Vegas Strip)",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ac4a94a5542996feb3fe92b",
+                  "question": "The winner of the 1984 United States Senate election in Maine took on what political role from 1997-2001?",
+                  "gold": "Secretary of Defense",
+                  "output": "Secretary of Defense",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Secretary of Defense",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5a80071f5542992bc0c4a684",
+                  "question": "Alice David is the voice of Lara Croft in a video game developed by which company ?",
+                  "gold": "Crystal Dynamics",
+                  "output": "Crystal Dynamics",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Crystal Dynamics",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ab4e48655429942dd415f9c",
+                  "question": "What is the height of the tallest mountain from which the Glen River flows?",
+                  "gold": "850 m",
+                  "output": "Slieve Donard — 850 m.",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Slieve Donard — 850 m.",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5abd68b45542993062266c77",
+                  "question": "What did the main character in Unbroken do in the Olympics?",
+                  "gold": "Olympic distance runner",
+                  "output": "Ran in the Olympics as a distance runner (Olympic distance runner).",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Ran in the Olympics as a distance runner (Olympic distance runner).",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ae135fb55429920d523431f",
+                  "question": "Scott Workman was an American stuntman and actor credited with a successful show on what smaller TV Network?",
+                  "gold": "WB Television Network",
+                  "output": "WB Television Network",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "WB Television Network",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ab2f4c95542991669774155",
+                  "question": "What is the name of the field marshal and strategist who was the mastermind behind the Schlieffen Plan?",
+                  "gold": "Alfred Graf von Schlieffen",
+                  "output": "Alfred von Schlieffen",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Alfred von Schlieffen",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5a7b6e1d5542997c3ec9716e",
+                  "question": "literary magazine Okyeame was inspired by this first prime Minister of Ghana whom led Ghana to independence from what country?",
+                  "gold": "Britain",
+                  "output": "Britain",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Britain",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                }
+              ],
+              "count": 8
+            },
+            {
+              "id": "875869d84c40a0e2de2d8adaae97f044ad88013ccbd66be4771a063dcba6091f",
+              "paths": [
+                "middleware/answer_shape.py"
+              ],
+              "source": "00021-audit.json",
+              "score": 0.375,
+              "improved": 0,
+              "regressions": 1,
+              "errors": 0,
+              "tasks": [
+                {
+                  "id": "5ae53b545542990ba0bbb23c",
+                  "question": "Where does the hotel and casino located in which Bill Cosby's third album was recorded?",
+                  "gold": "Las Vegas Strip in Paradise",
+                  "output": "Paradise, Nevada (on the Las Vegas Strip)",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Paradise, Nevada (on the Las Vegas Strip)",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ac4a94a5542996feb3fe92b",
+                  "question": "The winner of the 1984 United States Senate election in Maine took on what political role from 1997-2001?",
+                  "gold": "Secretary of Defense",
+                  "output": "Secretary of Defense",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Secretary of Defense",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5a80071f5542992bc0c4a684",
+                  "question": "Alice David is the voice of Lara Croft in a video game developed by which company ?",
+                  "gold": "Crystal Dynamics",
+                  "output": "Crystal Dynamics",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Crystal Dynamics",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ab4e48655429942dd415f9c",
+                  "question": "What is the height of the tallest mountain from which the Glen River flows?",
+                  "gold": "850 m",
+                  "output": "Slieve Donard, 850 m.",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Slieve Donard — 850 m.",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5abd68b45542993062266c77",
+                  "question": "What did the main character in Unbroken do in the Olympics?",
+                  "gold": "Olympic distance runner",
+                  "output": "Ran in the Olympics as a distance runner (Olympic distance runner).",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Ran in the Olympics as a distance runner (Olympic distance runner).",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ae135fb55429920d523431f",
+                  "question": "Scott Workman was an American stuntman and actor credited with a successful show on what smaller TV Network?",
+                  "gold": "WB Television Network",
+                  "output": "Buffy the Vampire Slayer — the WB Television Network.",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "WB Television Network",
+                  "before_score": 1.0,
+                  "delta": -1.0
+                },
+                {
+                  "id": "5ab2f4c95542991669774155",
+                  "question": "What is the name of the field marshal and strategist who was the mastermind behind the Schlieffen Plan?",
+                  "gold": "Alfred Graf von Schlieffen",
+                  "output": "Alfred von Schlieffen",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Alfred von Schlieffen",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5a7b6e1d5542997c3ec9716e",
+                  "question": "literary magazine Okyeame was inspired by this first prime Minister of Ghana whom led Ghana to independence from what country?",
+                  "gold": "Britain",
+                  "output": "Britain",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Britain",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                }
+              ],
+              "count": 8
+            },
+            {
+              "id": "b93527d5a0500c51b8ef4ebf241ddec7d1b8051d46d4d39c6084a654bdbfc055",
+              "paths": [
+                "agent.yaml",
+                "middleware/answer_shape.py"
+              ],
+              "source": "00021-audit.json",
+              "score": 0.5,
+              "improved": 0,
+              "regressions": 0,
+              "errors": 0,
+              "tasks": [
+                {
+                  "id": "5ae53b545542990ba0bbb23c",
+                  "question": "Where does the hotel and casino located in which Bill Cosby's third album was recorded?",
+                  "gold": "Las Vegas Strip in Paradise",
+                  "output": "Paradise, Nevada (the Flamingo Las Vegas",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Paradise, Nevada (on the Las Vegas Strip)",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ac4a94a5542996feb3fe92b",
+                  "question": "The winner of the 1984 United States Senate election in Maine took on what political role from 1997-2001?",
+                  "gold": "Secretary of Defense",
+                  "output": "Secretary of Defense",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Secretary of Defense",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5a80071f5542992bc0c4a684",
+                  "question": "Alice David is the voice of Lara Croft in a video game developed by which company ?",
+                  "gold": "Crystal Dynamics",
+                  "output": "Crystal Dynamics",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Crystal Dynamics",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ab4e48655429942dd415f9c",
+                  "question": "What is the height of the tallest mountain from which the Glen River flows?",
+                  "gold": "850 m",
+                  "output": "Slieve Donard — 850 m.",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Slieve Donard — 850 m.",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5abd68b45542993062266c77",
+                  "question": "What did the main character in Unbroken do in the Olympics?",
+                  "gold": "Olympic distance runner",
+                  "output": "Ran in the Olympics as a distance runner (Olympic distance runner).",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Ran in the Olympics as a distance runner (Olympic distance runner).",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ae135fb55429920d523431f",
+                  "question": "Scott Workman was an American stuntman and actor credited with a successful show on what smaller TV Network?",
+                  "gold": "WB Television Network",
+                  "output": "WB Television Network",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "WB Television Network",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ab2f4c95542991669774155",
+                  "question": "What is the name of the field marshal and strategist who was the mastermind behind the Schlieffen Plan?",
+                  "gold": "Alfred Graf von Schlieffen",
+                  "output": "Alfred von Schlieffen",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Alfred von Schlieffen",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5a7b6e1d5542997c3ec9716e",
+                  "question": "literary magazine Okyeame was inspired by this first prime Minister of Ghana whom led Ghana to independence from what country?",
+                  "gold": "Britain",
+                  "output": "Britain",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Britain",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                }
+              ],
+              "count": 8
+            },
+            {
+              "id": "c05f6cee002d2bb325744d0c7fc01e753616ecec384082ecb134d7e2b8c175f6",
+              "paths": [
+                "skills/main.md"
+              ],
+              "source": "00021-audit.json",
+              "score": 0.625,
+              "improved": 2,
+              "regressions": 1,
+              "errors": 0,
+              "tasks": [
+                {
+                  "id": "5ae53b545542990ba0bbb23c",
+                  "question": "Where does the hotel and casino located in which Bill Cosby's third album was recorded?",
+                  "gold": "Las Vegas Strip in Paradise",
+                  "output": "Paradise, Nevada",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Paradise, Nevada (on the Las Vegas Strip)",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ac4a94a5542996feb3fe92b",
+                  "question": "The winner of the 1984 United States Senate election in Maine took on what political role from 1997-2001?",
+                  "gold": "Secretary of Defense",
+                  "output": "Secretary of Defense",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Secretary of Defense",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5a80071f5542992bc0c4a684",
+                  "question": "Alice David is the voice of Lara Croft in a video game developed by which company ?",
+                  "gold": "Crystal Dynamics",
+                  "output": "Crystal Dynamics",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Crystal Dynamics",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ab4e48655429942dd415f9c",
+                  "question": "What is the height of the tallest mountain from which the Glen River flows?",
+                  "gold": "850 m",
+                  "output": "Glen River flows from Slieve Commedagh and Slieve Donard; Slieve Donard is the highest at 850 m.\n\n850 m",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Slieve Donard — 850 m.",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5abd68b45542993062266c77",
+                  "question": "What did the main character in Unbroken do in the Olympics?",
+                  "gold": "Olympic distance runner",
+                  "output": "Olympic distance runner",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Ran in the Olympics as a distance runner (Olympic distance runner).",
+                  "before_score": 0.0,
+                  "delta": 1.0
+                },
+                {
+                  "id": "5ae135fb55429920d523431f",
+                  "question": "Scott Workman was an American stuntman and actor credited with a successful show on what smaller TV Network?",
+                  "gold": "WB Television Network",
+                  "output": "Buffy the Vampire Slayer: WB Television Network",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "WB Television Network",
+                  "before_score": 1.0,
+                  "delta": -1.0
+                },
+                {
+                  "id": "5ab2f4c95542991669774155",
+                  "question": "What is the name of the field marshal and strategist who was the mastermind behind the Schlieffen Plan?",
+                  "gold": "Alfred Graf von Schlieffen",
+                  "output": "Alfred Graf von Schlieffen",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Alfred von Schlieffen",
+                  "before_score": 0.0,
+                  "delta": 1.0
+                },
+                {
+                  "id": "5a7b6e1d5542997c3ec9716e",
+                  "question": "literary magazine Okyeame was inspired by this first prime Minister of Ghana whom led Ghana to independence from what country?",
+                  "gold": "Britain",
+                  "output": "Britain",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Britain",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                }
+              ],
+              "count": 8
+            },
+            {
+              "id": "d77e9506d8c60ad29d3c2af2d4294d10ec489f9e54e089337dedeea56f4dac07",
+              "paths": [
+                "middleware/answer_shape.py",
+                "skills/main.md"
+              ],
+              "source": "00021-audit.json",
+              "score": 0.625,
+              "improved": 2,
+              "regressions": 1,
+              "errors": 0,
+              "tasks": [
+                {
+                  "id": "5ae53b545542990ba0bbb23c",
+                  "question": "Where does the hotel and casino located in which Bill Cosby's third album was recorded?",
+                  "gold": "Las Vegas Strip in Paradise",
+                  "output": "Paradise, Nevada",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Paradise, Nevada (on the Las Vegas Strip)",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ac4a94a5542996feb3fe92b",
+                  "question": "The winner of the 1984 United States Senate election in Maine took on what political role from 1997-2001?",
+                  "gold": "Secretary of Defense",
+                  "output": "Secretary of Defense",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Secretary of Defense",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5a80071f5542992bc0c4a684",
+                  "question": "Alice David is the voice of Lara Croft in a video game developed by which company ?",
+                  "gold": "Crystal Dynamics",
+                  "output": "Crystal Dynamics",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Crystal Dynamics",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ab4e48655429942dd415f9c",
+                  "question": "What is the height of the tallest mountain from which the Glen River flows?",
+                  "gold": "850 m",
+                  "output": "850 m",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Slieve Donard — 850 m.",
+                  "before_score": 0.0,
+                  "delta": 1.0
+                },
+                {
+                  "id": "5abd68b45542993062266c77",
+                  "question": "What did the main character in Unbroken do in the Olympics?",
+                  "gold": "Olympic distance runner",
+                  "output": "Ran as an Olympic distance runner",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Ran in the Olympics as a distance runner (Olympic distance runner).",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ae135fb55429920d523431f",
+                  "question": "Scott Workman was an American stuntman and actor credited with a successful show on what smaller TV Network?",
+                  "gold": "WB Television Network",
+                  "output": "Buffy the Vampire Slayer: WB Television Network",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "WB Television Network",
+                  "before_score": 1.0,
+                  "delta": -1.0
+                },
+                {
+                  "id": "5ab2f4c95542991669774155",
+                  "question": "What is the name of the field marshal and strategist who was the mastermind behind the Schlieffen Plan?",
+                  "gold": "Alfred Graf von Schlieffen",
+                  "output": "Alfred Graf von Schlieffen",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Alfred von Schlieffen",
+                  "before_score": 0.0,
+                  "delta": 1.0
+                },
+                {
+                  "id": "5a7b6e1d5542997c3ec9716e",
+                  "question": "literary magazine Okyeame was inspired by this first prime Minister of Ghana whom led Ghana to independence from what country?",
+                  "gold": "Britain",
+                  "output": "Britain",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Britain",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                }
+              ],
+              "count": 8
+            },
+            {
+              "id": "bfe2eded0a59af752a5c7427a1325d38a5aface09e6a246551c74c905819be0b",
+              "paths": [
+                "agent.yaml",
+                "middleware/answer_shape.py",
+                "skills/main.md"
+              ],
+              "source": "00021-audit.json",
+              "score": 0.5,
+              "improved": 1,
+              "regressions": 1,
+              "errors": 0,
+              "tasks": [
+                {
+                  "id": "5ae53b545542990ba0bbb23c",
+                  "question": "Where does the hotel and casino located in which Bill Cosby's third album was recorded?",
+                  "gold": "Las Vegas Strip in Paradise",
+                  "output": "Paradise",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Paradise, Nevada (on the Las Vegas Strip)",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ac4a94a5542996feb3fe92b",
+                  "question": "The winner of the 1984 United States Senate election in Maine took on what political role from 1997-2001?",
+                  "gold": "Secretary of Defense",
+                  "output": "Secretary of Defense",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Secretary of Defense",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5a80071f5542992bc0c4a684",
+                  "question": "Alice David is the voice of Lara Croft in a video game developed by which company ?",
+                  "gold": "Crystal Dynamics",
+                  "output": "Crystal Dynamics",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Crystal Dynamics",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ab4e48655429942dd415f9c",
+                  "question": "What is the height of the tallest mountain from which the Glen River flows?",
+                  "gold": "850 m",
+                  "output": "Slieve Donard at 850 m",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Slieve Donard — 850 m.",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5abd68b45542993062266c77",
+                  "question": "What did the main character in Unbroken do in the Olympics?",
+                  "gold": "Olympic distance runner",
+                  "output": "Ran as an Olympic distance runner",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Ran in the Olympics as a distance runner (Olympic distance runner).",
+                  "before_score": 0.0,
+                  "delta": 0.0
+                },
+                {
+                  "id": "5ae135fb55429920d523431f",
+                  "question": "Scott Workman was an American stuntman and actor credited with a successful show on what smaller TV Network?",
+                  "gold": "WB Television Network",
+                  "output": "Buffy the Vampire Slayer → WB Television Network\n\nWB Television Network",
+                  "score": 0.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "WB Television Network",
+                  "before_score": 1.0,
+                  "delta": -1.0
+                },
+                {
+                  "id": "5ab2f4c95542991669774155",
+                  "question": "What is the name of the field marshal and strategist who was the mastermind behind the Schlieffen Plan?",
+                  "gold": "Alfred Graf von Schlieffen",
+                  "output": "Alfred Graf von Schlieffen",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Alfred von Schlieffen",
+                  "before_score": 0.0,
+                  "delta": 1.0
+                },
+                {
+                  "id": "5a7b6e1d5542997c3ec9716e",
+                  "question": "literary magazine Okyeame was inspired by this first prime Minister of Ghana whom led Ghana to independence from what country?",
+                  "gold": "Britain",
+                  "output": "Britain",
+                  "score": 1.0,
+                  "error": null,
+                  "status": "finished",
+                  "before": "Britain",
+                  "before_score": 1.0,
+                  "delta": 0.0
+                }
+              ],
+              "count": 8
+            }
+          ],
+          "worker": "I was unable to complete the requested edit. No files were changed.\n\n**What happened:** I inspected the workspace (`middleware/answer_shape.py`, `runtime/agent.py`, `runtime/rule_audit.py`, `runtime/workspace.py`, `runtime/trace.py`, `runtime/editor.py`, `runtime/llm.py`, `runtime/reader.py`, `runtime/tools.py`, `runtime/web_config.py`, `runtime/tool_result.py`, `tools/shell.py`, `tools/read_skill.py`, `agent.yaml`, `prompts/system.md`, `prompts/extract.md`, `skills/main.md`, and the two tool descriptions). I then attempted a lightweight synthetic check of the answer rules via the `shell` tool. That check was re-issued repeatedly and consumed the entire turn budget before I could apply any edit. The repeated calls were an execution failure on my part, not a finding about the harness.\n\n**What the inspection established (observations, not verified fixes):**\n- `middleware/answer_shape.py` defines `_CONTEXT_KEYS = (\"context\", \"supplied_context\", \"evidence\", \"documents\", \"passages\")`, but `_evidence_for(ctx)` returns only `question`, `turn`, and `tool_calls`. So `_evidence_text(evidence, _CONTEXT_KEYS)` is always empty at the `before_final` boundary, and `_attested` always takes its vacuous-True branch. This matches the diagnosis's core claim.\n- `Context` in `runtime/agent.py` has no field carrying the supplied context/question text beyond `question`; the question string itself is the only place the supplied context appears (the task prompt embeds \"Context: ...\" inside the question). There is no separate context attribute to forward.\n- `_drop_trailing_parenthetical` already guards measurements via `_MEASUREMENT_PAREN`, and `_drop_trailing_clause` / `_drop_trailing_suffix` already call `_attested`. The rules are pure and take `(answer, evidence)`.\n\n**Not done:** the actual repair (populating the evidence dict so `_attested` performs a real check, and any accompanying rule adjustment), the synthetic verification of `Midnight Madness (1980)` → `Midnight Madness`, `The Dressmaker (2015 film)` → `The Dressmaker`, `To be, or not to be` → `To be`, and the measurement no-op. I also did not touch `skills/main.md` (the diagnosis's optional wording item) or add any rule-replay assertion.\n\n**Uncertainty:** I did not verify whether forwarding the question text alone is sufficient for the parenthetical cases, since the bare form must appear as a substring of the haystack; the supplied context in these tasks is embedded in the question string, so it likely is, but this is unconfirmed.\n\n<CHANGE_REASONS>\n{\"files\":[]}\n</CHANGE_REASONS>",
+          "status": "audited",
+          "invalid": [
+            {
+              "paths": [
+                "agent.yaml"
+              ],
+              "problem": "missing registered middleware: answer_shape"
+            },
+            {
+              "paths": [
+                "agent.yaml",
+                "skills/main.md"
+              ],
+              "problem": "missing registered middleware: answer_shape"
+            }
+          ],
+          "retention": [],
+          "retention_count": 0,
+          "retained_score": 0.5,
+          "retained_count": 8
+        }
+      ],
+      "initial_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef",
+      "final_id": "11280ae5ce35838edf42b7b9eadf5ea353444041b0587821430c2ace694028ef",
+      "final_changes": [],
+      "test_score": 0.5,
+      "test_tasks": 16,
+      "status": "finished",
+      "diagram": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1000\" height=\"380\" style=\"max-width:100%;height:auto\" viewBox=\"0 0 1000 380\" role=\"img\" aria-labelledby=\"diagram-title diagram-desc\">\n<title id=\"diagram-title\">Recursive CA-RSI 逐轮进化选择</title>\n<desc id=\"diagram-desc\">左侧为每轮提出的候选；右侧主线为该轮选择后实际保留的版本。候选标注其真实父版本，最终测试分数单独展示。</desc>\n<defs><marker id=\"evo-arrow\" markerWidth=\"8\" markerHeight=\"8\" refX=\"7\" refY=\"4\" orient=\"auto\"><path d=\"M1 1L7 4L1 7\" fill=\"none\" stroke=\"#687481\" stroke-width=\"1.5\"/></marker></defs>\n<rect width=\"1000\" height=\"380\" fill=\"#fff\"/>\n<style>text{font-family:system-ui,\"Noto Sans CJK SC\",sans-serif;fill:#1e293b;font-size:17px}.small{font-size:15px;fill:#475569}.heading{font-size:23px;font-weight:600}.node{fill:#f8fafc;stroke:#ccd4dd;stroke-width:1.2}.chosen{fill:#e7f5ef;stroke:#8eb8a4;stroke-width:1.2}.link{fill:none;stroke:#687481;stroke-width:1.5;marker-end:url(#evo-arrow)}</style>\n<text x=\"24\" y=\"34\" class=\"heading\">Recursive CA-RSI · 1 轮进化</text>\n<text x=\"24\" y=\"62\" class=\"small\">DeepSeek-V4-Flash · seed 20261129 · 每轮使用不同的新开发题；右侧为保留版本</text>\n<rect x=\"520\" y=\"85\" width=\"450\" height=\"90\" rx=\"7\" class=\"node\"/>\n<text x=\"536\" y=\"112\" class=\"\">初始版本</text>\n<text x=\"536\" y=\"137\" class=\"small\">首轮新题基线：50.00%（4/8）</text>\n<text x=\"536\" y=\"162\" class=\"small\">Snapshot 11280ae5ce</text>\n<rect x=\"24\" y=\"217\" width=\"390\" height=\"90\" rx=\"7\" class=\"node\"/>\n<text x=\"40\" y=\"244\" class=\"\">第 1 轮候选 · 3 个文件修改</text>\n<text x=\"40\" y=\"269\" class=\"small\">候选开发集：50.00%（4/8）</text>\n<text x=\"40\" y=\"294\" class=\"small\">候选 bfe2eded · 父版本 11280ae5</text>\n<rect x=\"520\" y=\"217\" width=\"450\" height=\"90\" rx=\"7\" class=\"node\"/>\n<text x=\"536\" y=\"244\" class=\"\">第 1 轮选择：保留原有版本</text>\n<text x=\"536\" y=\"269\" class=\"small\">保留版本开发集：50.00%（4/8） · 改正 0 / 退步 0</text>\n<text x=\"536\" y=\"294\" class=\"small\">Snapshot 11280ae5ce</text>\n<path d=\"M745 175V212\" class=\"link\"/>\n<path d=\"M424 262H510\" class=\"link\"/>\n<text x=\"24\" y=\"329\" class=\"small\">Meta 固定：本次关闭自身更新</text>\n<text x=\"24\" y=\"357\" class=\"small\">最终版本 11280ae5ce · 最终测试 50.00% · 16 题（不参与选择） · Meta 11280ae5</text>\n</svg>"
     }
   ]
 }
