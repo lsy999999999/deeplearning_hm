@@ -68,7 +68,7 @@ bash scripts/run_study.sh --dry-run
 
 # 实际运行，结束后自动更新可视化。
 bash scripts/run_study.sh
-open results/evolution-view.html
+open results/evolution-live.html
 ```
 
 可直接修改脚本开头的参数，也可以在命令前覆盖同名环境变量：
@@ -100,7 +100,7 @@ ALGORITHMS=ca_rsi TARGET_MODEL=DeepSeek-V4-Flash WORKER_MODEL=DeepSeek-V4-Flash 
 | `CONFIG` | `configs/hotpotqa_pilot.yaml` | 数据版本、评分、思考模式等基础配置 |
 | `CONTAINER_IMAGE` | `ca-rsi-runtime:local` | Target 的运行镜像 |
 | `OUTPUT_DIR` | `runs/study` | 原生记录按算法和种子分别保存，实际运行目录带时间戳 |
-| `VISUALIZATION_OUTPUT` | `results/evolution-view.html` | 汇总可视化页面 |
+| `VISUALIZATION_OUTPUT` | `results/evolution-live.html` | 汇总可视化页面 |
 
 脚本变量会覆盖基础 YAML 的对应字段，因此更换 `CONFIG` 时也应检查数据规模等变量。
 显式命令行参数优先于 `.env` 中的模型默认值；思考关闭与客户端输出 token 不设上限的设置沿用 YAML。
@@ -203,17 +203,17 @@ CA-RSI 在得分严格提高且退步数不超过门槛的组合中选最高分�
 
 ### 逐轮进化可视化
 
-直接用浏览器打开 [`results/evolution-view.html`](../results/evolution-view.html)。
+直接用浏览器打开 [`results/evolution-live.html`](../results/evolution-live.html)。
 页面可以切换 Meta-Harness / CA-RSI 和进化轮次，展开新增、修改和删除文件的代码差异，
 查看各个已评估组合的开发集得分、改正/退步题数、执行错误以及本轮和最终保留的版本。
 “各轮选择简图”的左侧显示本轮候选，右侧主线显示实际保留的版本。
 每个候选标注真实父版本；未通过文件检查、修改数超限以及评测后未采纳的轮次分别保留。
-导出时也为每次运行生成独立的 `evolution-view-运行标识.svg`，可直接嵌入 README。
+导出时也为每次运行生成独立的 `evolution-live-运行标识.svg`，可直接嵌入 README。
 点击“查看组合”可展开逐题变化和原始错误；测试集得分只作最终展示，不参与版本选择。
 
 通过 `scripts/run_study.sh` 或根目录 `scripts/run_experiment.py` 完成实验后，
 自动生成该运行目录内的 `evolution-view.html`，同时更新汇总页面和
-`results/evolution-view-runs.json` 历史索引。已完成的旧运行保留在下拉框中，
+`results/evolution-live-runs.json` 历史索引。已完成的旧运行保留在下拉框中，
 用算法、模型、seed 和运行时间区分，默认展示最新注册的运行。
 失败或中断的实验保留原始错误记录，不登记为已完成实验；dry-run 不更新页面。
 如果实验已保存而导出失败，启动器会明确报告运行目录和可视化错误。
@@ -223,13 +223,13 @@ CA-RSI 在得分严格提高且退步数不超过门槛的组合中选最高分�
 .venv/bin/python scripts/export_evolution.py --register --run runs/某组实验/已完成的运行目录
 ```
 
-当前已完成两次历史单轮运行和两次新的四轮运行，四轮结果见 README 第 3.5 节。
+当前汇总包含两次历史单轮运行、昨日两次四轮运行，以及今日 base / Recursive CA-RSI 两次四轮运行，结果见 README 第 3.5、3.6 节。
 首次没有历史索引时，从 README 对应的两份结果清单初始化，不混入早期排错。
 也可手动重新生成，默认读取已登记的运行，不调用模型：
 
 ```bash
 .venv/bin/python scripts/export_evolution.py
-open results/evolution-view.html
+open results/evolution-live.html
 ```
 
 后续实验可指定任意原生运行目录，重复 `--run` 可以放入多组运行：
@@ -238,11 +238,11 @@ open results/evolution-view.html
 .venv/bin/python scripts/export_evolution.py \
   --run runs/某组实验/实际运行目录 \
   --run runs/另一组实验/实际运行目录 \
-  --output results/evolution-view.html
+  --output results/evolution-live.html
 ```
 
-脚本同时保存结构化的 `evolution-view.json` 和用于会话内展示的
-`evolution-view-inline.html`。实验结束后自动更新磁盘文件，已打开的浏览器页面需要刷新。
+脚本同时保存结构化的 `evolution-live.json` 和用于会话内展示的
+`evolution-live-inline.html`。实验结束后自动更新磁盘文件，已打开的浏览器页面需要刷新。
 手动指定 `--run` 只导出所列运行；历史索引由实验成功后的自动更新维护。
 主实验文件的中文修改说明单独保存在 `results/evolution-annotations.json`，
 按候选 Snapshot ID 匹配；其他候选仍会显示实际代码差异，不套用旧说明。
@@ -286,3 +286,5 @@ docker build -t ca-rsi-runtime:local -f docker/runtime.Dockerfile docker
 十篇以上相关工作、中文 LaTeX 报告与 PDF、PPT、AI 使用披露和实际成员分工仍未完成。
 当前 DeepSeek 原型已记录八个真实测试失败案例；正式实验后还需重新分析其代表性。
 当前产物支持实现和小规模真实流程验证，尚不足以证明方法有效。
+
+旧演示保留在 `results/evolution-view.html`，不再覆盖；最新汇总使用 `results/evolution-live.html`。

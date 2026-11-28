@@ -330,7 +330,8 @@ base 使用 [`resume_meta_harness.py`](scripts/resume_meta_harness.py) 从未完
 
 复现配置分别为 [`meta_harness_hotpotqa_20261128.yaml`](configs/meta_harness_hotpotqa_20261128.yaml)
 和 [`recursive_ca_rsi_hotpotqa_20261128.yaml`](configs/recursive_ca_rsi_hotpotqa_20261128.yaml)。
-原始轨迹位于本地 `runs/study_20261128/`，交互可视化已自动更新并保留历史运行。
+原始轨迹位于本地 `runs/study_20261128/`；[最新交互可视化](results/evolution-live.html) 包含六次运行，
+旧演示 `evolution-view.html` 保留不覆盖。今天的两组运行使用旧提交，未启用后续提交新增的逐文件理由和规则验证联动。
 
 ## 4. 后续实验变量与记录方式
 
@@ -360,7 +361,7 @@ docker build -t ca-rsi-runtime:local -f docker/runtime.Dockerfile docker
 ```bash
 bash scripts/run_study.sh --dry-run  # 查看配置，不调用模型
 bash scripts/run_study.sh            # 默认两组各运行 4 轮，结束后自动更新可视化
-open results/evolution-view.html
+open results/evolution-live.html
 ```
 
 例如 `MODEL=DeepSeek-V4-Flash ROUNDS=4 SEEDS="43 44 45" bash scripts/run_study.sh`。
